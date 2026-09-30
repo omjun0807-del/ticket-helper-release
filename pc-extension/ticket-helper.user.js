@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.19
+// @version      0.1.20
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.19";
+globalThis.TICKET_HELPER_VERSION="0.1.20";
 globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surface2:#f0f2f8;--th-text:#161b2c;--th-muted:#667085;--th-border:#e3e6ef;--th-primary:#5b5ce2;--th-primary2:#ececff;--th-success:#159b6c;--th-danger:#e5484d;--th-dark:#20263a;--th-radius:18px;font-family:\"Noto Sans KR\",\"Apple SD Gothic Neo\",system-ui,sans-serif}.th-app{box-sizing:border-box;background:var(--th-bg);color:var(--th-text);padding:16px;border-radius:24px;max-width:420px;line-height:1.45}.th-app *{box-sizing:border-box}.th-header{display:flex;justify-content:space-between;align-items:flex-start;padding:4px 2px 14px}.th-header h1{font-size:20px;margin:2px 0}.th-header p,.th-help{color:var(--th-muted);font-size:12px;margin:3px 0}.th-kicker{font-size:11px;font-weight:700;color:var(--th-primary)}.th-mode,.th-source,.th-health{font-size:11px;padding:6px 9px;border-radius:999px;background:var(--th-primary2);color:var(--th-primary);font-weight:700}.is-live .th-mode{background:#fff0f1;color:var(--th-danger)}.th-card{background:var(--th-surface);border:1px solid var(--th-border);border-radius:var(--th-radius);padding:16px;margin-bottom:12px}.th-row,.th-section-head,.th-status{display:flex;justify-content:space-between;gap:12px;align-items:center}.th-label{display:block;color:var(--th-muted);font-size:10px;margin-bottom:3px}.th-countdown{margin-top:14px;border-radius:12px;background:var(--th-dark);color:#fff;padding:12px;display:flex;justify-content:space-between;align-items:center}.th-countdown b{font-size:20px}.th-section-head h2{font-size:15px;margin:0}.th-chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.th-chip{font-size:11px;background:var(--th-surface2);padding:7px 9px;border-radius:999px}.th-chip-session{background:var(--th-primary2);color:var(--th-primary)}.th-subtitle{font-size:11px;color:var(--th-muted);font-weight:700;margin-top:10px}.th-muted{color:var(--th-muted);font-size:11px}.th-fallback{padding:0;margin:10px 0 0;list-style:none}.th-fallback li{display:flex;gap:9px;align-items:center;padding:7px 0;font-size:12px}.th-fallback li span{width:22px;height:22px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:var(--th-surface2);font-weight:700}.th-status button{border:0;border-radius:12px;background:var(--th-primary);color:#fff;font-weight:800;padding:12px 16px;cursor:pointer}\n";
 
 /* packages/catalog/src/builtin-catalog.js */
@@ -2029,37 +2029,30 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),d=String(date.getDate()).padStart(2,'0');
     return `${y}-${m}-${d}`;
   }
-  function desktopDateOptions(value=''){
-    const current=String(value||'');
-    const today=new Date(); today.setHours(12,0,0,0);
-    const values=[];
-    for(let offset=-30;offset<=370;offset++){
-      const date=new Date(today); date.setDate(today.getDate()+offset);
-      values.push(localDateValue(date));
-    }
-    if(/^\d{4}-\d{2}-\d{2}$/.test(current)&&!values.includes(current)) values.push(current);
-    values.sort();
-    const weekdays=['일','월','화','수','목','금','토'];
-    return '<option value="">날짜 선택</option>'+values.map(v=>{
-      const [y,m,d]=v.split('-').map(Number);
-      const date=new Date(y,m-1,d,12,0,0,0);
-      const text=`${y}. ${m}. ${d}. (${weekdays[date.getDay()]})`;
-      return `<option value="${v}"${v===current?' selected':''}>${text}</option>`;
-    }).join('');
+  function desktopTimeParts(value=''){
+    const m=/^(\d{2}):(\d{2})$/.exec(String(value||''));
+    return m?{hour:m[1],minute:m[2]}:{hour:'10',minute:'00'};
   }
-  function desktopTimeOptions(value=''){
-    const current=String(value||'');
-    const values=[];
-    for(let h=0;h<24;h++)for(let m=0;m<60;m+=5)values.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
-    if(/^\d{2}:\d{2}$/.test(current)&&!values.includes(current)) values.push(current);
-    values.sort();
-    return '<option value="">시간 선택</option>'+values.map(v=>`<option value="${v}"${v===current?' selected':''}>${formatTimePickerValue(v)}</option>`).join('');
+  function desktopTimeControls(value=''){
+    const parts=desktopTimeParts(value);
+    const hours=Array.from({length:24},(_,h)=>{
+      const v=String(h).padStart(2,'0');
+      return `<option value="${v}"${v===parts.hour?' selected':''}>${v}시</option>`;
+    }).join('');
+    const minutes=Array.from({length:12},(_,i)=>{
+      const v=String(i*5).padStart(2,'0');
+      return `<option value="${v}"${v===parts.minute?' selected':''}>${v}분</option>`;
+    }).join('');
+    return `<div class="th-time-parts"><select data-picker-part="hour">${hours}</select><span>:</span><select data-picker-part="minute">${minutes}</select></div><button type="button" class="th-picker-confirm" data-action="picker-confirm">확인</button>`;
   }
   function pickerFieldMarkup({label,field,type,value=''}) {
     const isDesktopExtension=!!(typeof globalThis!=='undefined'&&globalThis.TICKET_HELPER_EXTENSION);
     if(isDesktopExtension){
-      const options=type==='date'?desktopDateOptions(value):desktopTimeOptions(value);
-      return `<label>${esc(label)}<select class="th-picker-select" data-field="${esc(field)}" aria-label="${esc(label)}">${options}</select></label>`;
+      const display=type==='date'?formatDatePickerValue(value):formatTimePickerValue(value);
+      const popover=type==='date'
+        ?'<div class="th-calendar-head"><button type="button" data-action="picker-prev-month">‹</button><strong data-picker-month-label></strong><button type="button" data-action="picker-next-month">›</button></div><div class="th-calendar-week"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div class="th-calendar-grid" data-picker-calendar></div>'
+        :desktopTimeControls(value);
+      return `<div class="th-picker-field"><div class="th-picker-label">${esc(label)}</div><div class="th-custom-picker" data-picker-type="${esc(type)}" data-picker-field="${esc(field)}"><button type="button" class="th-custom-picker-trigger" data-action="picker-toggle"><span data-picker-display="${esc(field)}">${esc(display)}</span><span class="th-picker-arrow">▾</span></button><div class="th-picker-popover" hidden>${popover}</div><input class="th-picker-value" data-field="${esc(field)}" type="hidden" value="${esc(value)}"></div></div>`;
     }
     const display=type==='date'?formatDatePickerValue(value):formatTimePickerValue(value);
     return `<label>${esc(label)}<div class="th-picker-shell"><span class="th-picker-display" data-picker-display="${esc(field)}">${esc(display)}</span><input class="th-picker-native" data-field="${esc(field)}" type="${esc(type)}" value="${esc(value)}" aria-label="${esc(label)}"></div></label>`;
@@ -2233,7 +2226,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       :host{all:initial}.th-shell{position:fixed;left:auto;right:max(8px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));width:min(390px,calc(100vw - 42px));max-width:390px;margin-left:auto;z-index:2147483647;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",system-ui,sans-serif}
       .th-panel,.th-status-panel{pointer-events:auto;background:#fff;border:1px solid #e3e6ef;border-radius:18px;box-shadow:0 14px 42px rgba(0,0,0,.22);overflow:hidden;box-sizing:border-box}.th-panel[open]{max-height:min(72dvh,720px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;touch-action:pan-y}.th-panel:not([open]){width:max-content;max-width:100%;margin-left:auto;border-radius:999px}.th-panel:not([open])>summary{background:#5b5ce2;color:#fff;border-radius:999px;padding:11px 16px}.th-panel:not([open])>summary span{display:none}.th-panel:not([open])~.th-status-panel{display:none}
       .th-panel>summary,.th-status-panel>summary,.th-subsection>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;font:800 14px system-ui;color:#161b2c;cursor:pointer}.th-panel>summary::-webkit-details-marker,.th-status-panel>summary::-webkit-details-marker,.th-subsection>summary::-webkit-details-marker{display:none}.th-panel>summary{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(10px)}.th-panel>summary span{font-size:11px;color:#667085;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
-      .th-mobile-config{background:#fff;padding:10px 12px 14px;display:grid;grid-template-columns:minmax(0,1fr);gap:9px;box-sizing:border-box;overflow-x:hidden}.th-mobile-config *{box-sizing:border-box;min-width:0}.th-mobile-config label{font:700 11px/1.4 system-ui;color:#667085;display:flex;flex-direction:column;gap:4px}.th-mobile-config select,.th-mobile-config input{display:block;width:100%;max-width:100%;min-width:0;inline-size:100%;max-inline-size:100%;min-inline-size:0;font:700 14px system-ui;padding:10px 11px;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c;overflow:hidden}.th-picker-select{height:46px;cursor:pointer;text-align:center;text-align-last:center}
+      .th-mobile-config{background:#fff;padding:10px 12px 14px;display:grid;grid-template-columns:minmax(0,1fr);gap:9px;box-sizing:border-box;overflow-x:hidden}.th-mobile-config *{box-sizing:border-box;min-width:0}.th-mobile-config label{font:700 11px/1.4 system-ui;color:#667085;display:flex;flex-direction:column;gap:4px}.th-mobile-config select,.th-mobile-config input{display:block;width:100%;max-width:100%;min-width:0;inline-size:100%;max-inline-size:100%;min-inline-size:0;font:700 14px system-ui;padding:10px 11px;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c;overflow:hidden}.th-picker-field{display:flex;flex-direction:column;gap:4px}.th-picker-label{font:700 11px/1.4 system-ui;color:#667085}.th-custom-picker{position:relative}.th-custom-picker-trigger{width:100%;height:46px;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c;font:800 14px system-ui;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer}.th-picker-arrow{position:absolute;right:12px;color:#667085}.th-picker-popover{position:absolute;z-index:30;left:0;right:0;top:50px;background:#fff;border:1px solid #dfe3ee;border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.18);padding:10px}.th-picker-popover[hidden]{display:none!important}.th-picker-value{display:none!important}.th-calendar-head{display:grid;grid-template-columns:38px 1fr 38px;align-items:center;gap:6px;margin-bottom:8px}.th-calendar-head strong{text-align:center;font:900 13px system-ui}.th-calendar-head button{height:34px;border:0;border-radius:9px;background:#f3f4f8;color:#344054;font-size:20px;cursor:pointer}.th-calendar-week,.th-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.th-calendar-week span{text-align:center;font:700 10px system-ui;color:#98a2b3;padding:3px 0}.th-calendar-grid button{height:34px;border:0;border-radius:9px;background:#f8f9fc;color:#344054;font:800 11px system-ui;cursor:pointer}.th-calendar-grid button.is-outside{opacity:.3}.th-calendar-grid button.is-selected{background:#5b5ce2;color:#fff}.th-calendar-grid button:hover{outline:1px solid #cfd0ff}.th-time-parts{display:grid;grid-template-columns:1fr 18px 1fr;align-items:center;gap:6px}.th-time-parts span{text-align:center;font-weight:900}.th-time-parts select{text-align:center;text-align-last:center;height:44px}.th-picker-confirm{width:100%;margin-top:8px;border:0;border-radius:10px;padding:10px 12px;background:#5b5ce2;color:#fff;font-weight:800;cursor:pointer}
       .th-mobile-config input[type="date"],.th-mobile-config input[type="time"]{width:100%!important;max-width:100%!important;min-width:0!important;inline-size:100%!important;max-inline-size:100%!important;min-inline-size:0!important;overflow:hidden}
       .th-mobile-config input[type="date"]::-webkit-date-and-time-value,.th-mobile-config input[type="time"]::-webkit-date-and-time-value{min-width:0;width:100%;text-align:center}
       .th-mobile-config input[type="date"]::-webkit-datetime-edit,.th-mobile-config input[type="time"]::-webkit-datetime-edit{min-width:0;max-width:100%;overflow:hidden}
@@ -2289,6 +2282,79 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         });
       }
     }
+    const closeDesktopPickers=(except=null)=>{
+      for(const picker of rootNode.querySelectorAll?.('.th-custom-picker')||[]){
+        if(picker===except)continue;
+        const pop=picker.querySelector?.('.th-picker-popover');
+        if(pop)pop.hidden=true;
+      }
+    };
+    const renderDesktopCalendar=(picker,monthDate)=>{
+      const grid=picker?.querySelector?.('[data-picker-calendar]');
+      const label=picker?.querySelector?.('[data-picker-month-label]');
+      if(!grid||!label)return;
+      const y=monthDate.getFullYear(),m=monthDate.getMonth();
+      picker.dataset.pickerMonth=`${y}-${String(m+1).padStart(2,'0')}`;
+      label.textContent=`${y}년 ${m+1}월`;
+      const first=new Date(y,m,1,12,0,0,0);
+      const start=new Date(y,m,1-first.getDay(),12,0,0,0);
+      const value=picker.querySelector?.('.th-picker-value')?.value||'';
+      let html='';
+      for(let i=0;i<42;i++){
+        const d=new Date(start);d.setDate(start.getDate()+i);
+        const v=localDateValue(d);
+        html+=`<button type="button" data-action="picker-day" data-date="${v}" class="${d.getMonth()!==m?'is-outside ':''}${v===value?'is-selected':''}">${d.getDate()}</button>`;
+      }
+      grid.innerHTML=html;
+    };
+    for(const picker of rootNode.querySelectorAll?.('.th-custom-picker')||[]){
+      const pop=picker.querySelector?.('.th-picker-popover');
+      const value=picker.querySelector?.('.th-picker-value');
+      picker.querySelector?.('[data-action="picker-toggle"]')?.addEventListener('click',(event)=>{
+        event.preventDefault();event.stopPropagation();
+        const willOpen=!!pop?.hidden;
+        closeDesktopPickers(picker);
+        if(pop)pop.hidden=!willOpen;
+        if(willOpen&&picker.dataset.pickerType==='date'){
+          const current=/^\d{4}-\d{2}-\d{2}$/.test(value?.value||'')?String(value.value):localDateValue(new Date());
+          const [y,m]=current.split('-').map(Number);
+          renderDesktopCalendar(picker,new Date(y,m-1,1,12,0,0,0));
+        }
+      });
+      picker.querySelector?.('[data-action="picker-prev-month"]')?.addEventListener('click',(event)=>{
+        event.preventDefault();event.stopPropagation();
+        const key=picker.dataset.pickerMonth||localDateValue(new Date()).slice(0,7);
+        const [y,m]=key.split('-').map(Number);
+        renderDesktopCalendar(picker,new Date(y,m-2,1,12,0,0,0));
+      });
+      picker.querySelector?.('[data-action="picker-next-month"]')?.addEventListener('click',(event)=>{
+        event.preventDefault();event.stopPropagation();
+        const key=picker.dataset.pickerMonth||localDateValue(new Date()).slice(0,7);
+        const [y,m]=key.split('-').map(Number);
+        renderDesktopCalendar(picker,new Date(y,m,1,12,0,0,0));
+      });
+      picker.querySelector?.('[data-picker-calendar]')?.addEventListener('click',(event)=>{
+        const button=event.target?.closest?.('[data-action="picker-day"]');
+        if(!button||!value)return;
+        event.preventDefault();event.stopPropagation();
+        value.value=String(button.dataset.date||'');
+        const display=rootNode.querySelector?.(`[data-picker-display="${value.dataset.field}"]`);
+        if(display)display.textContent=formatDatePickerValue(value.value);
+        if(pop)pop.hidden=true;
+        value.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+      picker.querySelector?.('[data-action="picker-confirm"]')?.addEventListener('click',(event)=>{
+        if(!value)return;
+        event.preventDefault();event.stopPropagation();
+        const hour=picker.querySelector?.('[data-picker-part="hour"]')?.value||'00';
+        const minute=picker.querySelector?.('[data-picker-part="minute"]')?.value||'00';
+        value.value=`${hour}:${minute}`;
+        const display=rootNode.querySelector?.(`[data-picker-display="${value.dataset.field}"]`);
+        if(display)display.textContent=formatTimePickerValue(value.value);
+        if(pop)pop.hidden=true;
+        value.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+    }
     const wheelScroll=(target,event)=>{
       if(!target)return;
       const max=Math.max(0,Number(target.scrollHeight||0)-Number(target.clientHeight||0));
@@ -2311,7 +2377,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       el.addEventListener('change',()=>onChange?.(readConfig(rootNode),field,fieldNeedsRerender(field)));
       if(field==='local-name'||field==='local-phone') el.addEventListener('input',()=>onLocalUserInput?.(readConfig(rootNode)));
     }
-    restorePanelUiState(rootNode,previousUi);
+    rootNode.addEventListener('pointerdown',(event)=>{
+      if(!event.target?.closest?.('.th-custom-picker'))closeDesktopPickers();
+    });
+        restorePanelUiState(rootNode,previousUi);
     return rootNode;
   }
 
@@ -2619,7 +2688,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.19');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.20');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.syncStatusText=syncStatusText;
       viewState.syncLastAt=Number(syncState.lastSyncAt||0);
@@ -2739,7 +2808,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.19');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.20');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
