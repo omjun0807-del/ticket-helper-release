@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.9
+// @version      0.1.10
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -17,7 +17,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.9";
+globalThis.TICKET_HELPER_VERSION="0.1.10";
 globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surface2:#f0f2f8;--th-text:#161b2c;--th-muted:#667085;--th-border:#e3e6ef;--th-primary:#5b5ce2;--th-primary2:#ececff;--th-success:#159b6c;--th-danger:#e5484d;--th-dark:#20263a;--th-radius:18px;font-family:\"Noto Sans KR\",\"Apple SD Gothic Neo\",system-ui,sans-serif}.th-app{box-sizing:border-box;background:var(--th-bg);color:var(--th-text);padding:16px;border-radius:24px;max-width:420px;line-height:1.45}.th-app *{box-sizing:border-box}.th-header{display:flex;justify-content:space-between;align-items:flex-start;padding:4px 2px 14px}.th-header h1{font-size:20px;margin:2px 0}.th-header p,.th-help{color:var(--th-muted);font-size:12px;margin:3px 0}.th-kicker{font-size:11px;font-weight:700;color:var(--th-primary)}.th-mode,.th-source,.th-health{font-size:11px;padding:6px 9px;border-radius:999px;background:var(--th-primary2);color:var(--th-primary);font-weight:700}.is-live .th-mode{background:#fff0f1;color:var(--th-danger)}.th-card{background:var(--th-surface);border:1px solid var(--th-border);border-radius:var(--th-radius);padding:16px;margin-bottom:12px}.th-row,.th-section-head,.th-status{display:flex;justify-content:space-between;gap:12px;align-items:center}.th-label{display:block;color:var(--th-muted);font-size:10px;margin-bottom:3px}.th-countdown{margin-top:14px;border-radius:12px;background:var(--th-dark);color:#fff;padding:12px;display:flex;justify-content:space-between;align-items:center}.th-countdown b{font-size:20px}.th-section-head h2{font-size:15px;margin:0}.th-chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.th-chip{font-size:11px;background:var(--th-surface2);padding:7px 9px;border-radius:999px}.th-chip-session{background:var(--th-primary2);color:var(--th-primary)}.th-subtitle{font-size:11px;color:var(--th-muted);font-weight:700;margin-top:10px}.th-muted{color:var(--th-muted);font-size:11px}.th-fallback{padding:0;margin:10px 0 0;list-style:none}.th-fallback li{display:flex;gap:9px;align-items:center;padding:7px 0;font-size:12px}.th-fallback li span{width:22px;height:22px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:var(--th-surface2);font-weight:700}.th-status button{border:0;border-radius:12px;background:var(--th-primary);color:#fff;font-weight:800;padding:12px 16px;cursor:pointer}\n";
 
 /* packages/catalog/src/builtin-catalog.js */
@@ -1240,16 +1240,53 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       },
       async ensureCalendarVisible() {
         if (monthInfo()) return true;
-        const arrows = ['←','‹','＜','◀','◁'];
-        const candidates = unique([...doc.querySelectorAll('button,a,[role="button"],span,div')]
-          .filter(visible)
-          .map((node) => node.closest?.('button,a,[role="button"]') || node)
-          .filter((el) => arrows.includes(textOf(el))));
-        for (const el of candidates) {
-          el.click?.();
-          for (let i = 0; i < 50; i++) {
+        const waitForCalendar = async (el) => {
+          if (!el) return false;
+          try { el.click?.(); } catch {}
+          for (let i = 0; i < 60; i++) {
             await sleep(40);
             if (monthInfo()) return true;
+          }
+          return false;
+        };
+        const arrows = ['←','‹','＜','◀','◁','❮'];
+        const labelOf = (el) => [
+          textOf(el),
+          el?.getAttribute?.('aria-label') || '',
+          el?.getAttribute?.('title') || '',
+          el?.getAttribute?.('alt') || '',
+          String(el?.className || '')
+        ].join(' ');
+        const direct = unique([...doc.querySelectorAll('button,a,[role="button"],[onclick],span,div,img')]
+          .filter(visible)
+          .map((node) => node.closest?.('button,a,[role="button"],[onclick]') || node)
+          .filter((el) => arrows.includes(textOf(el)) || /뒤로|이전|back|prev/i.test(labelOf(el))));
+        for (const el of direct) if (await waitForCalendar(el)) return true;
+
+        // KEYESCAPE's time view sometimes renders the back arrow as an image/CSS
+        // control without useful text. Find the small clickable control immediately
+        // to the left of the visible "시간" heading.
+        const timeHeaders = [...doc.querySelectorAll('div,span,p,strong,b,h1,h2,h3')]
+          .filter(visible)
+          .filter((el) => textOf(el) === '시간');
+        for (const header of timeHeaders) {
+          const hr = header.getBoundingClientRect();
+          let box = header.parentElement;
+          for (let depth = 0; depth < 5 && box; depth++, box = box.parentElement) {
+            const nearby = unique([...box.querySelectorAll('button,a,[role="button"],[onclick],img,span,div')]
+              .filter(visible)
+              .map((node) => node.closest?.('button,a,[role="button"],[onclick]') || node)
+              .filter((el) => {
+                if (el === header || textOf(el) === '시간') return false;
+                const r = el.getBoundingClientRect();
+                if (r.width < 8 || r.height < 8 || r.width > 120 || r.height > 120) return false;
+                const cy = r.top + r.height / 2;
+                const hy = hr.top + hr.height / 2;
+                return Math.abs(cy - hy) <= 70 && r.right <= hr.left + 12;
+              })
+              .map((el) => ({ el, r: el.getBoundingClientRect() }))
+              .sort((a,b) => Math.abs(a.r.right - hr.left) - Math.abs(b.r.right - hr.left)));
+            for (const item of nearby.slice(0,4)) if (await waitForCalendar(item.el)) return true;
           }
         }
         return false;
@@ -1901,7 +1938,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         <button type="button" data-action="add-current">현재 페이지 등록 / 업데이트</button>
         ${selected?`<div class="th-divider"></div><label>선택 테마명<input data-field="profile-theme-name" value="${esc(selected.themeName||'')}"></label><label>선택 지점명<input data-field="profile-branch-name" value="${esc(selected.branchName||'')}"></label><label>오픈 D-<input data-field="profile-days-before" type="number" min="0" max="60" inputmode="numeric" value="${selected.openingRule?.daysBefore??''}"></label><label>오픈 시각<input data-field="profile-open-time" type="time" value="${esc(selected.openingRule?.openTime||'')}"></label>`:''}
       </div></details>
-      <details class="th-subsection"><summary>업데이트 · v${esc(viewState.installedVersion||'?')}</summary><div class="th-subsection-body"><div class="th-warning">새 버전 확인 후 업데이트 파일을 엽니다. Safari에서 Userscripts 팝업을 열어 업데이트를 승인하면 됩니다.</div><button type="button" data-action="check-update" class="secondary">새 버전 확인</button></div></details>
+      <details class="th-subsection"><summary>업데이트 · v${esc(viewState.installedVersion||'?')}</summary><div class="th-subsection-body"><div class="th-warning">새 버전 확인 후 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.</div><button type="button" data-action="check-update" class="secondary">새 버전 확인</button></div></details>
       <details class="th-subsection"><summary>백업</summary><div class="th-subsection-body th-config-actions"><button type="button" data-action="import-profiles" class="secondary">가져오기</button><button type="button" data-action="export-profiles" class="secondary">내보내기</button></div></details>
     </div></details>`;
   }
@@ -2187,6 +2224,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     return helpers.createPersistedCheckpoint({profileId:profile.id,stage:'armed',targetDate:state.targetDate,mode:'practice',fallbackCursor:state.fallbackCursor,now:()=>nowMs,extra:{autoContinue:true,openTrigger,events:[],timingTest:true}});
   }
 
+  function calendarResetNavigationUrl(url,now=Date.now()){
+    try{
+      const u=new URL(url,hostRoot.location?.href||'https://www.keyescape.com/');
+      u.searchParams.set('_th_reset',String(now));
+      return u.toString();
+    }catch{return String(url||'');}
+  }
+
   async function scanTargetDateSessions({profile,targetDate,doc=hostRoot.document,win=hostRoot,helpers=deps,pollMs=80,maxWaitMs=2200,sleep=(ms)=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
     if(!profile) return {ok:false,stage:'profile-missing',message:'테마를 먼저 선택하세요.'};
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(targetDate||''))) return {ok:false,stage:'date-missing',message:'목표 날짜를 먼저 선택하세요.'};
@@ -2203,9 +2248,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const selected=await adapter.selectTargetDate(targetDate);
     if(!selected?.ok){
       if(selected?.navigateTo) return {...selected,ok:false,navigateTo:selected.navigateTo};
-      const calendarResetNeeded=profile.adapterId==='keyescape'&&selected?.stage==='date-missing'&&/calendar (?:could not be restored|month header not found)/i.test(String(selected?.message||''));
+      const calendarResetNeeded=profile.adapterId==='keyescape'
+        && selected?.stage==='date-missing'
+        && /calendar|month\s+header/i.test(String(selected?.message||''));
       if(calendarResetNeeded&&currentUrl&&targetUrl&&locationMatches){
-        return {ok:false,stage:'calendar-reset-required',message:'시간 화면에서 달력 복귀에 실패해 예약 페이지를 새로고침한 뒤 다시 시도합니다.',reloadCurrentPage:true,navigateTo:targetUrl};
+        return {ok:false,stage:'calendar-reset-required',message:'시간 화면에서 달력 복귀에 실패해 예약 페이지를 새로 열고 자동으로 다시 시도합니다.',reloadCurrentPage:true,navigateTo:targetUrl};
       }
       return selected||{ok:false,stage:'date-missing',message:'목표 날짜를 선택하지 못했습니다.'};
     }
@@ -2253,7 +2300,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.9');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.10');
       return {profile:p,schedule,viewState};
     }
 
@@ -2302,10 +2349,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.9');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.10');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
-          const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 열린 뒤 Userscripts 팝업에서 업데이트를 승인하면 됩니다.`);
+          const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
           if(accepted){hostRoot.location.href=UPDATE_DOWNLOAD_URL;return {status:'opened',remote,current};}
           return {status:'available',remote,current};
         }
@@ -2438,10 +2485,22 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           if(!p){hostRoot.alert?.('테마를 먼저 등록/선택해 주세요.');return;}
           const result=await scanTargetDateSessions({profile:p,targetDate:cfg.targetDate,doc,win:hostRoot,helpers:deps});
           if(result?.reloadCurrentPage){
-            state.pendingTargetScan=true; await storage.setSettings(state); hostRoot.location.reload(); return;
+            state.pendingTargetScan=true;
+            state.pendingTargetScanProfileId=p.id;
+            state.pendingTargetScanTargetDate=cfg.targetDate;
+            state.pendingTargetScanResetCount=Number(state.pendingTargetScanResetCount||0)+1;
+            await storage.setSettings(state);
+            hostRoot.location.href=calendarResetNavigationUrl(result.navigateTo||targetFor(p,cfg.targetDate));
+            return;
           }
           if(result?.navigateTo){
-            state.pendingTargetScan=true; await storage.setSettings(state); hostRoot.location.href=result.navigateTo; return;
+            state.pendingTargetScan=true;
+            state.pendingTargetScanProfileId=p.id;
+            state.pendingTargetScanTargetDate=cfg.targetDate;
+            state.pendingTargetScanResetCount=Number(state.pendingTargetScanResetCount||0);
+            await storage.setSettings(state);
+            hostRoot.location.href=result.navigateTo;
+            return;
           }
           if(!result?.ok){hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(result?.message||result?.stage||'알 수 없는 오류')}`);return;}
           const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
@@ -2465,17 +2524,57 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const updateSafePath=!/reservation1\.php|reservation2\.php|\/request(?:\/|$)/i.test(hostRoot.location?.pathname||'');
     if(!checkpoint&&updateSafePath) hostRoot.setTimeout?.(()=>{checkUpdate(false);},1500);
 
-    if(settings.pendingTargetScan&&initialProfile&&state.targetDate){
-      state.pendingTargetScan=false; await storage.setSettings(state);
-      try{
-        const result=await scanTargetDateSessions({profile:initialProfile,targetDate:state.targetDate,doc,win:hostRoot,helpers:deps});
-        if(result?.ok){
-          const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles); pageScan={...ctx,sessions:result.sessions};
-          const updated=await storage.saveObservedSchedule(initialProfile.id,state.targetDate,result.sessions,Date.now());
-          if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;}
-          render();
+    if(settings.pendingTargetScan&&state.targetDate){
+      const pendingProfile=profiles.find(p=>p.id===settings.pendingTargetScanProfileId)||initialProfile;
+      const pendingDate=String(settings.pendingTargetScanTargetDate||state.targetDate||'');
+      const resetCount=Number(settings.pendingTargetScanResetCount||0);
+      if(pendingProfile&&pendingDate){
+        try{
+          const result=await scanTargetDateSessions({profile:pendingProfile,targetDate:pendingDate,doc,win:hostRoot,helpers:deps});
+          if(result?.reloadCurrentPage&&resetCount<2){
+            state.pendingTargetScan=true;
+            state.pendingTargetScanProfileId=pendingProfile.id;
+            state.pendingTargetScanTargetDate=pendingDate;
+            state.pendingTargetScanResetCount=resetCount+1;
+            await storage.setSettings(state);
+            hostRoot.location.href=calendarResetNavigationUrl(result.navigateTo||targetFor(pendingProfile,pendingDate),Date.now()+resetCount);
+            return true;
+          }
+          if(result?.navigateTo){
+            state.pendingTargetScan=true;
+            state.pendingTargetScanProfileId=pendingProfile.id;
+            state.pendingTargetScanTargetDate=pendingDate;
+            state.pendingTargetScanResetCount=resetCount;
+            await storage.setSettings(state);
+            hostRoot.location.href=result.navigateTo;
+            return true;
+          }
+          state.pendingTargetScan=false;
+          state.pendingTargetScanProfileId='';
+          state.pendingTargetScanTargetDate='';
+          state.pendingTargetScanResetCount=0;
+          await storage.setSettings(state);
+          if(result?.ok){
+            state.profileId=pendingProfile.id;
+            state.siteId=pendingProfile.siteId||state.siteId;
+            state.branchId=String(pendingProfile.branchId||state.branchId||'');
+            state.targetDate=pendingDate;
+            const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
+            pageScan={...ctx,sessions:result.sessions};
+            const updated=await storage.saveObservedSchedule(pendingProfile.id,pendingDate,result.sessions,Date.now());
+            if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;}
+            await storage.setSettings(state);
+            render();
+          }else{
+            hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(result?.message||result?.stage||'알 수 없는 오류')}`);
+          }
+        }catch(err){
+          state.pendingTargetScan=false;
+          state.pendingTargetScanResetCount=0;
+          await storage.setSettings(state);
+          hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(err?.message||err)}`);
         }
-      }catch{}
+      }
     }
 
     if(checkpoint?.autoContinue&&initialProfile&&checkpoint.profileId===initialProfile.id&&state.targetDate){
