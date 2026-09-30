@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.29
+// @version      0.1.30
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.29";
+globalThis.TICKET_HELPER_VERSION="0.1.30";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1069,6 +1069,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
       async selectTheme(themeName) {
         if (!themeName) return resultFail('theme-missing', 'theme name is required');
+        if(profile.trustCurrentPageTheme===true)return resultOk({themeName,selectedByCurrentPage:true});
         if(profile.themeBookingUrl&&typeof page.currentHref==='function'){
           try{
             const expected=new URL(profile.themeBookingUrl,'https://www.keyescape.com');
@@ -1085,6 +1086,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       },
 
       async selectTargetDate(targetDate) {
+        if(profile.trustCurrentPageDate===true)return resultOk({targetDate,selectedByCurrentPage:true});
         const target = parseTargetDate(targetDate);
         if (!target) return resultFail('date-missing', 'target date must be YYYY-MM-DD');
         if (!page.getMonth() && typeof page.ensureCalendarVisible === 'function') {
@@ -2792,7 +2794,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.29');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.30');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -2917,7 +2919,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.29');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.30');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
@@ -2935,7 +2937,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     let render=()=>{};
 
     function makeMachine(selected,cfg,fallbackCursor){
-      const adapter=deps.createPageAdapter(selected,doc,hostRoot,{maxPaymentAmount:Number(cfg.maxPaymentAmount)||0});
+      const effectiveProfile=cfg?.trustCurrentPageTheme?{...selected,trustCurrentPageTheme:true,trustCurrentPageDate:true,themeBookingUrl:String(hostRoot.location?.href||selected.themeBookingUrl||selected.bookingUrl||'')}:selected;
+      const adapter=deps.createPageAdapter(effectiveProfile,doc,hostRoot,{maxPaymentAmount:Number(cfg.maxPaymentAmount)||0});
       if(!adapter)return null;
       const observer=async payload=>{
         const updated=await storage.saveObservedSchedule(payload.profileId,payload.targetDate,payload.sessions,Date.now());
@@ -2965,7 +2968,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     async function execute(selected,cfg,fallbackCursor,openTrigger){
       if(!selected||!cfg.targetDate)return null;
       const target=targetFor(selected,cfg.targetDate);
-      if(target&&!sameUrl(hostRoot.location.href,target)){
+      if(!cfg.skipTargetNavigation&&target&&!sameUrl(hostRoot.location.href,target)){
         const nextState={...state,...cfg,profileId:selected.id};
         await storage.setSettings(nextState);
         checkpoint=deps.createPersistedCheckpoint({profileId:selected.id,stage:'selecting-date',targetDate:cfg.targetDate,mode:cfg.mode,fallbackCursor,now:Date.now,extra:{autoContinue:true,events:[],openTrigger}});
@@ -3018,6 +3021,13 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const target=targetFor(selected,cfg.targetDate);
       if(target&&!sameUrl(hostRoot.location.href,target)){hostRoot.location.href=target;return {stage:'navigating'};}
       return resumePersisted(armed);
+    }
+
+    function canPracticeOnCurrentPage(selected,cfg){
+      if(hostRoot.TICKET_HELPER_DESKTOP_RUNTIME)return false;
+      if(!selected||selected.adapterId!=='keyescape')return false;
+      if(!Array.isArray(pageScan?.sessions)||!pageScan.sessions.length)return false;
+      return String(pageScan.profileId||'')===String(selected.id||'')&&String(pageScan.targetDate||'')===String(cfg?.targetDate||'');
     }
 
     async function armTimingTest(selected,cfg,delayMs=10000){
@@ -3081,7 +3091,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           }
           if(!result?.ok){hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(result?.message||result?.stage||'알 수 없는 오류')}`);return;}
           const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
-          pageScan={...ctx,sessions:result.sessions};
+          pageScan={...ctx,sessions:result.sessions,profileId:p.id,targetDate:cfg.targetDate};
           const updated=await storage.saveObservedSchedule(p.id,cfg.targetDate,result.sessions,Date.now());
           if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;await markSyncDirty();}
           render();
@@ -3092,7 +3102,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         onRemoveHour:async (cfg,hour)=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0)return;profiles[i]={...profiles[i],timePriorities:deps.removeHourPriority(profiles[i].timePriorities||[],hour)};await storage.setProfiles(profiles);await markSyncDirty();render();},
         onAddCurrent:async cfg=>{try{const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);const created=createProfileFromCurrentPage({url:hostRoot.location.href,branchName:cfg.newBranchName||ctx.branchName,themeName:cfg.newThemeName||ctx.themeName,daysBefore:Number(cfg.newDaysBefore),openTime:cfg.newOpenTime,imageUrl:ctx.imageUrl},deps);const duplicate=profiles.find(p=>typeof deps.semanticProfileKey==='function'?deps.semanticProfileKey(p)===deps.semanticProfileKey(created):p.id===created.id);if(duplicate&&!hostRoot.confirm?.(`이미 저장된 테마입니다: ${duplicate.themeName}\n현재 페이지 정보로 업데이트할까요?`))return;profiles=typeof deps.upsertProfileByIdentity==='function'?deps.upsertProfileByIdentity(profiles,created):[...profiles,created];const saved=profiles.find(p=>typeof deps.semanticProfileKey==='function'&&deps.semanticProfileKey(p)===deps.semanticProfileKey(created))||profiles.find(p=>p.id===created.id)||created;state.profileId=saved.id;state.siteId=saved.siteId;state.branchId=String(saved.branchId||'');await storage.setProfiles(profiles);await storage.setSettings(state);await markSyncDirty();render();hostRoot.alert?.(`테마 등록 완료: ${saved.themeName}`);}catch(err){hostRoot.alert?.(`테마 등록 실패: ${String(err?.message||err)}`);}},
         onPrepare:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);return armOrExecute(selected,{...cfg,profileId:selected?.id||cfg.profileId});},
-        onPracticeNow:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}return armOrExecute(selected,{...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true});},
+        onPracticeNow:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const inPlace=canPracticeOnCurrentPage(selected,cfg);return armOrExecute(selected,{...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true,skipTargetNavigation:inPlace,trustCurrentPageTheme:inPlace});},
         onTimingTest:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const result=await armTimingTest(selected,{...cfg,profileId:selected.id},10000);if(result?.stage==='timing-test-armed')hostRoot.alert?.('10초 후 실제 오픈 트리거와 같은 경로로 연습 실행합니다. 목표 날짜는 현재 사이트에서 예약 가능한 날짜여야 합니다.');return result;}
       });
       return {profile,schedule};
@@ -3152,7 +3162,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             state.branchId=String(pendingProfile.branchId||state.branchId||'');
             state.targetDate=pendingDate;
             const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
-            pageScan={...ctx,sessions:result.sessions};
+            pageScan={...ctx,sessions:result.sessions,profileId:pendingProfile.id,targetDate:pendingDate};
             const updated=await storage.saveObservedSchedule(pendingProfile.id,pendingDate,result.sessions,Date.now());
             if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;}
             await storage.setSettings(state);
