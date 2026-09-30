@@ -9,11 +9,11 @@ Personal escape-room / reservation helper.
 Both platforms use the same public `ticket-helper.user.js` and the same GitHub sync format.
 
 ## Current releases
-- Userscript core v0.1.35
+- Userscript core v0.1.36
 - PC Violentmonkey userscript: recommended
 - iPhone Safari + Userscripts
-- Legacy unpacked PC extension v0.1.20
-- Chrome Web Store package v0.1.20 (not required for the recommended PC setup)
+- Legacy unpacked PC extension v0.1.21
+- Chrome Web Store package v0.1.21 (not required for the recommended PC setup)
 - Keyescape / Naver Booking adapters + five new partner sites (manual final confirmation)
 - configurable session priority and theme fallback
 - Keyescape branch/theme selection now waits for dynamic options and has a jQuery-change fallback
