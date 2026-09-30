@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.38
+// @version      0.1.39
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -35,7 +35,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.38";
+globalThis.TICKET_HELPER_VERSION="0.1.39";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1652,7 +1652,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const before=page.currentHref(); page.clickElement(actions[0]);
         return (await page.waitForNavigation(before))?ok():fail('navigation-failed','다음 did not navigate');
       },
-      async fillUserInfo(){ return ok(); },
+      async fillUserInfo(user){if(user?.participants&&!await page.selectParticipants?.(user.participants))return fail('participants-missing','설정한 참여 인원을 선택하지 못했습니다. 직접 확인해 주세요.');return ok();},
       async applyAgreements(){ return ok(); },
       async captchaState(){ return 'complete'; },
       async continueAfterCaptcha(mode){
@@ -1665,10 +1665,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if(!boundary) return fail('navigation-failed','Npay final-payment boundary not detected');
         if(mode!=='confirm') return ok({paymentBoundary:true});
         const max=Number(paymentPolicy?.maxPaymentAmount)||0;
-        if(max<=0) return fail('payment-limit-required','final payment mode requires an explicit payment cap');
         const final=page.finalPaymentAction?.();
         if(!final?.element||!Number.isFinite(final.amount)) return fail('confirmation-blocked','final payment button not found');
-        if(final.amount>max) return fail('payment-limit-exceeded',`payment amount ${final.amount} exceeds cap ${max}`,{amount:final.amount,maxPaymentAmount:max});
+        if(max>0&&final.amount>max) return fail('payment-limit-exceeded',`payment amount ${final.amount} exceeds cap ${max}`,{amount:final.amount,maxPaymentAmount:max});
         page.clickElement(final.element);
         return ok({paymentBoundary:true,paymentSubmitted:true,requiresExternalConfirmation:true,amount:final.amount,maxPaymentAmount:max});
       }
@@ -1724,6 +1723,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }
         return 'timeout';
       },
+      selectParticipants:count=>deps.selectParticipantCount(doc,win,count),
       findExactActions:actions,
       currentHref(){return win.location.href;},
       async waitForNavigation(before){for(let i=0;i<40;i++){await sleep(50);if(win.location.href!==before||win.location.pathname.includes('/request'))return true;}return false;},
@@ -2101,27 +2101,46 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     for(const [key,value] of Object.entries(adapter))if(typeof value==='function')guarded[key]=async(...args)=>{check();const result=await value.apply(guarded,args);check();return result;};
     return guarded;
   }
+  async function selectParticipantCount(doc,win,count){
+    const n=Number(count);if(!Number.isInteger(n)||n<1||n>20)return false;
+    const text=el=>String(el?.textContent||'').replace(/\s+/g,' ').trim();
+    const label=new RegExp('^'+n+'\\s*명$');
+    const candidates=[...doc.querySelectorAll('select')].filter(el=>[...el.options].some(o=>label.test(text(o))));
+    if(candidates.length===1){const el=candidates[0],option=[...el.options].find(o=>label.test(text(o))&&!o.disabled);if(!option)return false;el.value=option.value;el.dispatchEvent(new win.Event('input',{bubbles:true}));el.dispatchEvent(new win.Event('change',{bubbles:true}));return el.value===option.value;}
+    const labels=[...doc.querySelectorAll('label,strong,span,h3')].filter(el=>/^참여\s*인원\s*설정/.test(text(el)));
+    for(const heading of labels){let scope=heading.parentElement;
+      for(let i=0;i<5&&scope;i++,scope=scope.parentElement){
+        const triggers=[...scope.querySelectorAll('[role="combobox"],button,[aria-haspopup],a')].filter(el=>/해당하는 항목|항목을 선택/.test(text(el)));
+        if(triggers.length!==1)continue;const trigger=triggers[0];trigger.click();
+        for(let tries=0;tries<20;tries++){
+          const options=[...scope.querySelectorAll('[role="option"],li,button,a')].filter(el=>label.test(text(el))&&!el.disabled&&el.getAttribute('aria-disabled')!=='true').filter(el=>![...el.querySelectorAll('[role="option"],li,button,a')].some(child=>label.test(text(child))));
+          if(options.length===1){options[0].click();return label.test(text(trigger))||options[0].getAttribute('aria-selected')==='true';}
+          await new Promise(resolve=>win.setTimeout(resolve,50));
+        }return false;
+      }
+    }return false;
+  }
   function createPartnerBookingAdapter({page,profile}){
     return {
       requiresManualConfirmation:true,
       async selectTheme(){return await page.selectTheme(profile)?ok():fail('theme-missing','선택 테마를 확인할 수 없습니다.');},
       async selectTargetDate(date){return await page.selectDate(date)?ok():fail('date-missing','목표 날짜 선택을 확인할 수 없습니다.');},
-      async readSessions(){if(typeof page.waitForSessions==='function')await page.waitForSessions();return page.readSessions(profile);},
+      async readSessions(){if(typeof page.waitForSessions==='function'&&await page.waitForSessions()===false){const error=new Error('목표 날짜 회차 갱신을 기다리는 중입니다.');error.stage='sessions-not-loaded';throw error;}return page.readSessions(profile);},
       async chooseSession(session){return page.chooseSession(session,profile)?ok():fail('session-unavailable','선택 회차가 마감되었거나 변경되었습니다.');},
       async goNext(){return await page.advance()?ok({navigationPending:page.navigationExpected===true}):fail('next-missing','예약 정보 화면을 열 수 없습니다.');},
-      async fillUserInfo(user){return page.fillUser(user)?ok():fail('form-field-missing','예약자 이름·연락처를 확인해 주세요.');},
+      async fillUserInfo(user){if(!page.fillUser(user))return fail('form-field-missing','예약자 이름·연락처를 확인해 주세요.');if(user?.participants&&!await page.selectParticipants?.(user.participants))return fail('participants-missing','설정한 참여 인원을 선택하지 못했습니다. 직접 확인해 주세요.');return ok();},
       async applyAgreements(){return page.applyAgreements()?ok():fail('agreement-missing','필수 동의를 직접 확인해 주세요.');},
       async captchaState(){return page.captchaState();},
       async continueAfterCaptcha(){return fail('confirmation-blocked','새 연동 사이트는 인원·금액을 확인하고 직접 예약을 확정해 주세요.');}
     };
   }
   function createBrowserPartnerPage(doc,win,profile){
-    let selected=null;
+    let selected=null,refreshFrom=null;
     const sleep=ms=>new Promise(resolve=>win.setTimeout(resolve,ms));
     const text=el=>String(el?.innerText||el?.textContent||'').trim();
     const field=selector=>doc.querySelector(selector);
     const setValue=(el,value)=>{if(!el)return false;el.value=String(value);el.dispatchEvent(new win.Event('input',{bubbles:true}));el.dispatchEvent(new win.Event('change',{bubbles:true}));return true;};
-    const wait=async test=>{for(let i=0;i<40;i++){if(test())return true;await sleep(50);}return false;};
+    const wait=async test=>{const limit=profile.openingAttempt?Math.max(70,Number(profile.openingWaitMs)||420):8000;for(let i=0;i<Math.ceil(limit/50);i++){if(test())return true;await sleep(50);}return false;};
     function sessions(){
       let elements=[];
       if(profile.adapterId==='zeroworld')elements=[...doc.querySelectorAll('#theme_time_data a.choice-time__time')];
@@ -2151,7 +2170,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           await wait(()=>!!field('input[name="theme_num"]')?.value||doc.querySelectorAll('#theme_list a').length>0);
           const current=field('input[name="theme_num"]');if(String(current?.value)===String(profile.themeId))return true;
           const target=[...doc.querySelectorAll('#theme_list a')].find(el=>(el.getAttribute('href')||'').startsWith(`javascript:fun_theme_select('${profile.themeId}',`));
-          if(!target)return false;target.click();return wait(()=>String(field('input[name="theme_num"]')?.value)===String(profile.themeId));
+          if(!target)return false;refreshFrom=field('#theme_time_data')?.firstElementChild||null;target.click();return wait(()=>String(field('input[name="theme_num"]')?.value)===String(profile.themeId));
         }
         // Direct theme links can display a stale branch selector; match the rendered card/data.
         const title=[...doc.querySelectorAll('.res-item h2,.res-item strong,article strong')].some(el=>clean(text(el))===clean(profile.themeName));
@@ -2162,22 +2181,24 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return false;
         if(profile.adapterId==='zeroworld'){
           if(field('input[name="rev_days"]')?.value===date)return true;
+          if(!await wait(()=>doc.querySelectorAll('#calendar_data a[href^="javascript:fun_days_select"]').length>0))return false;
           const [year,month]=date.split('-');
           for(let i=0;i<24;i++){
             const day=[...doc.querySelectorAll('#calendar_data a')].find(el=>(el.getAttribute('href')||'').startsWith(`javascript:fun_days_select('${date}',`));
-            if(day){day.click();return wait(()=>field('input[name="rev_days"]')?.value===date);}
-            const header=text(field('#calendar_data'));const y=header.match(/(\d{4})년/)?.[1],m=header.match(/(\d{1,2})월/)?.[1];if(!y||!m)return false;
+            if(day){refreshFrom=field('#theme_time_data')?.firstElementChild||null;day.click();return wait(()=>field('input[name="rev_days"]')?.value===date);}
+            const header=(text(field('#calendar_data .calendar__year-pick'))+' '+text(field('#calendar_data .calendar__month-pick'))).trim()||text(field('#calendar_data'));const y=header.match(/(\d{4})년/)?.[1],m=header.match(/(\d{1,2})월/)?.[1];if(!y||!m)return false;
             const dir=Number(year)*12+Number(month)>Number(y)*12+Number(m)?1:-1;
-            const arrows=[...doc.querySelectorAll('#calendar_data a')].filter(el=>/^javascript:fun_calendar_move/.test(el.getAttribute('href')||''));
-            const arrow=arrows[dir>0?arrows.length-1:0];if(!arrow)return false;const before=header;arrow.click();if(!await wait(()=>text(field('#calendar_data'))!==before))return false;
+            const arrows=[...doc.querySelectorAll('#calendar_data .calendar__arrow')].filter(el=>/^javascript:fun_calendar_move/.test(el.getAttribute('href')||''));
+            const arrow=arrows[dir>0?arrows.length-1:0];if(!arrow)return false;const oldCalendar=arrow;arrow.click();if(!await wait(()=>!oldCalendar.isConnected))return false;
           }return false;
         }
         return field(profile.adapterId==='doom'?'input[name="rev_days"]':'input[name="date"][type="text"]')?.value===date;
       },
       readSessions:sessions,
-      waitForSessions:()=>wait(()=>sessions().length>0),
+      waitForSessions:()=>wait(()=>(!refreshFrom||!refreshFrom.isConnected)&&sessions().length>0),
       chooseSession(session){selected=sessions().find(s=>s.available&&s.label===session.label)?.element||null;return !!selected;},
       async advance(){if(!selected)return false;selected.click();if(profile.adapterId==='zeroworld')return wait(()=>!!field('input[name="theme_time_num"]')?.value);return true;},
+      selectParticipants:count=>selectParticipantCount(doc,win,count),
       fillUser(user){
         const name=field('input[name="name"]');const phone=String(user?.phone||'').replace(/\D/g,'');
         if(!name||!String(user?.name||'').trim()||!/^01\d\d{7,8}$/.test(phone))return false;
@@ -2192,7 +2213,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       captchaState(){const captcha=field('input[name="input_captcha"]');return captcha&&!captcha.value.trim()?'pending':'complete';}
     };
   }
-  return {createPartnerBookingAdapter,createBrowserPartnerPage,withRunCancellation};
+  return {createPartnerBookingAdapter,createBrowserPartnerPage,withRunCancellation,selectParticipantCount};
 });
 
 
@@ -2404,8 +2425,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       <label>모드<select data-field="mode"><option value="practice"${state.mode==='practice'||!state.mode?' selected':''}>연습 · 확정 안 함</option><option value="live"${state.mode==='live'?' selected':''}>실전 · 예약확정 / 결제 직전</option><option value="confirm"${state.mode==='confirm'?' selected':''}>예약 확정까지 · 최종 결제 클릭</option></select></label>
       <label class="th-check"><input data-field="captcha-auto-resume" type="checkbox"${state.captchaAutoResume!==false?' checked':''}> CAPTCHA 직접 완료 후 자동 계속</label>
       <label class="th-check"><input data-field="fallback" type="checkbox"${state.fallbackEnabled!==false?' checked':''}> 실패 시 다음 테마</label>
-      <label>최종 결제 상한(원)<input data-field="max-payment-amount" type="number" min="0" step="1000" inputmode="numeric" value="${esc(state.maxPaymentAmount||'')}" placeholder="예: 120000"></label>
-      <div class="th-warning">※ ‘예약 확정까지’는 네이버에서 표시된 결제금액이 상한 이하일 때만 최종 결제 버튼을 누릅니다. 생체인증/추가인증은 직접 진행합니다.</div>
+      <div class="th-warning">※ ‘예약 확정까지’는 네이버 최종 결제 버튼까지 누릅니다. 생체인증/추가인증은 직접 진행합니다.</div>
+      <label>참여 인원<select data-field="local-participants"><option value="">직접 선택</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}"${Number(localUser.participants)===i+1?' selected':''}>${i+1}명</option>`).join('')}</select></label>
       <label>예약자 이름<input data-field="local-name" autocomplete="name" value="${esc(localUser.name||'')}"></label>
       <label>연락처<input data-field="local-phone" inputmode="tel" autocomplete="tel" value="${esc(localUser.phone||'')}" placeholder="01012345678"></label>
       <div class="th-config-actions"><button type="button" data-action="prepare"${selected?'':' disabled'}>티켓팅 준비</button><button type="button" data-action="stop" class="secondary">중지</button></div>
@@ -2432,7 +2453,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         <label>Private 저장소<input data-field="sync-repo" value="${esc(syncRepo)}" autocomplete="off" spellcheck="false"></label>
         <label>GitHub 토큰<input data-field="sync-token" type="password" value="" autocomplete="off" placeholder="${syncConfig.hasToken?'토큰 저장됨 · 변경할 때만 새 토큰 입력':'fine-grained token 입력'}"></label>
         <label class="th-check"><input data-field="sync-auto" type="checkbox"${syncConfig.autoSync?' checked':''}> 자동 동기화</label>
-        <div class="th-warning">테마·지점·오픈 규칙·회차/시간 우선순위만 동기화합니다. 예약자 이름·전화번호·결제상한·실전/확정 모드는 각 기기에만 남습니다. 토큰도 기기 로컬에만 저장됩니다.</div>
+        <div class="th-warning">테마·지점·오픈 규칙·회차/시간 우선순위만 동기화합니다. 예약자 이름·전화번호·실전/확정 모드는 각 기기에만 남습니다. 토큰도 기기 로컬에만 저장됩니다.</div>
         <div class="th-config-actions"><button type="button" data-action="sync-test" class="secondary">연결 확인</button><button type="button" data-action="sync-pull" class="secondary">내려받기</button><button type="button" data-action="sync-push">업로드</button></div>
       </div></details>
       <details class="th-subsection"><summary>${viewState.extensionVersion?`PC 확장판 · v${esc(viewState.extensionVersion)}`:viewState.desktopUserscript?`PC Userscript · v${esc(viewState.installedVersion||'?')}`:`업데이트 · v${esc(viewState.installedVersion||'?')}`}</summary><div class="th-subsection-body">${viewState.extensionVersion?'<div class="th-warning">Chrome/Edge 네이티브 확장판입니다. 새 확장 버전은 브라우저 확장 업데이트 또는 새 PC 확장 패키지로 적용합니다.</div>':viewState.desktopUserscript?'<div class="th-warning">PC에서는 Violentmonkey가 @updateURL / @downloadURL / @version을 기준으로 새 버전을 자동 업데이트합니다. 별도 ZIP 교체나 chrome://extensions 새로고침이 필요 없습니다.</div>':'<div class="th-warning">새 버전 확인 후 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.</div><button type="button" data-action="check-update" class="secondary">새 버전 확인</button>'}</div></details>
@@ -2740,7 +2761,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     siteId:rootNode.querySelector('[data-field="site"]')?.value||'',branchId:rootNode.querySelector('[data-field="branch"]')?.value||'',profileId:rootNode.querySelector('[data-field="profile"]')?.value||'',
     targetDate:rootNode.querySelector('[data-field="target-date"]')?.value||'',mode:rootNode.querySelector('[data-field="mode"]')?.value||'practice',fallbackEnabled:!!rootNode.querySelector('[data-field="fallback"]')?.checked,
     captchaAutoResume:!!rootNode.querySelector('[data-field="captcha-auto-resume"]')?.checked,maxPaymentAmount:rootNode.querySelector('[data-field="max-payment-amount"]')?.value||'',
-    localName:rootNode.querySelector('[data-field="local-name"]')?.value||'',localPhone:rootNode.querySelector('[data-field="local-phone"]')?.value||'',
+    localParticipants:rootNode.querySelector('[data-field="local-participants"]')?.value||'',localName:rootNode.querySelector('[data-field="local-name"]')?.value||'',localPhone:rootNode.querySelector('[data-field="local-phone"]')?.value||'',
     profileThemeName:rootNode.querySelector('[data-field="profile-theme-name"]')?.value||'',profileBranchName:rootNode.querySelector('[data-field="profile-branch-name"]')?.value||'',profileDaysBefore:rootNode.querySelector('[data-field="profile-days-before"]')?.value||'',profileOpenTime:rootNode.querySelector('[data-field="profile-open-time"]')?.value||'',
     newBranchName:rootNode.querySelector('[data-field="new-branch-name"]')?.value||'',newThemeName:rootNode.querySelector('[data-field="new-theme-name"]')?.value||'',newDaysBefore:rootNode.querySelector('[data-field="new-days-before"]')?.value||'',newOpenTime:rootNode.querySelector('[data-field="new-open-time"]')?.value||'',
     syncRepo:rootNode.querySelector('[data-field="sync-repo"]')?.value||'',syncToken:rootNode.querySelector('[data-field="sync-token"]')?.value||'',syncAuto:!!rootNode.querySelector('[data-field="sync-auto"]')?.checked
@@ -3041,7 +3062,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:settings.fallbackEnabled!==false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:settings.maxPaymentAmount||'',compactView:settings.compactView!==false,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0)};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:settings.fallbackEnabled!==false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:settings.compactView!==false,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0)};
     let runGeneration=0,activeRun=null;
     let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
 
@@ -3055,7 +3076,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.38');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.39');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -3075,7 +3096,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       }
       const settingsCfg={profileId:state.profileId||cfg.profileId,siteId:state.siteId||cfg.siteId,branchId:state.branchId||cfg.branchId,targetDate:cfg.targetDate,mode:cfg.mode,fallbackEnabled:cfg.fallbackEnabled,captchaAutoResume:cfg.captchaAutoResume,maxPaymentAmount:cfg.maxPaymentAmount,compactView:state.compactView!==false};
       Object.assign(state,settingsCfg); await storage.setSettings(state); backupInfo=await storage.getAutoBackup?.()||backupInfo;
-      if(changedField==='local-name'||changedField==='local-phone'||changedField==='prepare'){localUser={name:cfg.localName||'',phone:cfg.localPhone||''};await storage.setLocalUser(localUser);}
+      if(changedField==='local-name'||changedField==='local-phone'||changedField==='local-participants'||changedField==='prepare'){localUser={name:cfg.localName||'',phone:cfg.localPhone||'',participants:cfg.localParticipants||''};await storage.setLocalUser(localUser);}
       if(['profile-theme-name','profile-branch-name','profile-days-before','profile-open-time','prepare'].includes(changedField)){
         profiles=typeof deps.applyMobileProfileConfig==='function'?deps.applyMobileProfileConfig(profiles,cfg):deps.applyMobilePriorityConfig(profiles,cfg);
         await storage.setProfiles(profiles); backupInfo=await storage.getAutoBackup?.()||backupInfo;
@@ -3203,7 +3224,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.38');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.39');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
@@ -3380,7 +3401,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const {profile,schedule,viewState}=viewData();
       deps.mountUserscriptPanel(host,{profiles,state,viewState,localUser,syncConfig:syncUiConfig(),
         onChange:async (cfg,field,needsRerender)=>{const saving=persistConfig(cfg,field);if(needsRerender)render();else deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));await saving;if(!needsRerender)deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));},
-        onLocalUserInput:cfg=>{localUser={name:cfg.localName||'',phone:cfg.localPhone||''};deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));if(localUserSaveTimer!==null)hostRoot.clearTimeout?.(localUserSaveTimer);localUserSaveTimer=hostRoot.setTimeout?.(()=>{storage.setLocalUser(localUser).catch?.(()=>{});localUserSaveTimer=null;},400);},
+        onLocalUserInput:cfg=>{localUser={name:cfg.localName||'',phone:cfg.localPhone||'',participants:cfg.localParticipants||''};deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));if(localUserSaveTimer!==null)hostRoot.clearTimeout?.(localUserSaveTimer);localUserSaveTimer=hostRoot.setTimeout?.(()=>{storage.setLocalUser(localUser).catch?.(()=>{});localUserSaveTimer=null;},400);},
         onToggleCompact:async()=>{state.compactView=state.compactView===false;await storage.setSettings(state);await markSyncDirty();render();},
         onSyncConfig:async cfg=>saveSyncConfigFromUi(cfg),
         onSyncTest:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('test');},
@@ -3391,7 +3412,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         onRestoreBackup:async()=>{const backup=await storage.getAutoBackup?.();if(!backup?.profiles){hostRoot.alert?.('복구할 자동 백업이 없습니다.');return;}const when=backup.at?new Date(backup.at).toLocaleString('ko-KR'):'최근';if(!hostRoot.confirm?.(`${when} 자동 백업으로 테마/회차/설정을 되돌릴까요? 이름·연락처는 변경하지 않습니다.`))return;const restored=await storage.restoreAutoBackup();if(!restored){hostRoot.alert?.('자동 백업 복구에 실패했습니다.');return;}profiles=restored.profiles||[];Object.assign(state,restored.settings||{});backupInfo=await storage.getAutoBackup?.()||null;await markSyncDirty();render();hostRoot.alert?.('자동 백업을 복구했습니다.');},
         onExport:async()=>{const json=await storage.exportProfiles();if(hostRoot.navigator?.clipboard?.writeText){try{await hostRoot.navigator.clipboard.writeText(json);hostRoot.alert?.('백업 JSON을 클립보드에 복사했습니다.');return;}catch{}}hostRoot.prompt?.('아래 백업 JSON을 복사하세요.',json);},
         onCheckUpdate:async()=>checkUpdate(true),
-        onScan:async cfg=>{try{
+        onScan:async cfg=>{const generation=runGeneration;try{
           const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles); let sessions=[];
           const matchedProfile=profiles.find(p=>p.siteId===ctx.siteId&&String(p.branchId||'')===String(ctx.branchId||'')&&p.themeName===ctx.themeName);
           if(ctx.adapterId){const temp={...(matchedProfile||{}),id:matchedProfile?.id||'scan',adapterId:ctx.adapterId,bookingUrl:hostRoot.location.href};const adapter=deps.createPageAdapter(temp,doc,hostRoot);if(adapter)try{sessions=await adapter.readSessions()}catch{} }
@@ -3400,7 +3421,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;}}
           render();
         }catch(err){hostRoot.alert?.(`페이지 인식 실패: ${String(err?.message||err)}`);}},
-        onScanTargetDate:async cfg=>{try{
+        onScanTargetDate:async cfg=>{const generation=runGeneration;try{
           await persistConfig(cfg,'target-date');
           const p=profiles.find(x=>x.id===cfg.profileId)||selectedProfile();
           if(!p){hostRoot.alert?.('테마를 먼저 등록/선택해 주세요.');return;}
@@ -3509,7 +3530,6 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
             pageScan={...ctx,sessions:result.sessions,profileId:pendingProfile.id,targetDate:pendingDate};
             const updated=await storage.saveObservedSchedule(pendingProfile.id,pendingDate,result.sessions,Date.now());
-            if(generation!==runGeneration)return;
         if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;}
             await storage.setSettings(state);
             render();
