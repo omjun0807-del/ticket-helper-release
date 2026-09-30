@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.23
+// @version      0.1.24
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.23";
+globalThis.TICKET_HELPER_VERSION="0.1.24";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -2240,7 +2240,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       :host{all:initial}.th-shell{position:fixed;left:auto;right:max(8px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));width:min(390px,calc(100vw - 42px));max-width:390px;margin-left:auto;z-index:2147483647;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",system-ui,sans-serif}
       .th-panel,.th-status-panel{pointer-events:auto;background:#fff;border:1px solid #e3e6ef;border-radius:18px;box-shadow:0 14px 42px rgba(0,0,0,.22);overflow:hidden;box-sizing:border-box}.th-panel[open]{max-height:min(72dvh,720px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;touch-action:pan-y}.th-panel:not([open]){width:max-content;max-width:100%;margin-left:auto;border-radius:999px}.th-panel:not([open])>summary{background:#5b5ce2;color:#fff;border-radius:999px;padding:11px 16px}.th-panel:not([open])>summary span{display:none}.th-panel:not([open])~.th-status-panel{display:none}
       .th-panel>summary,.th-status-panel>summary,.th-subsection>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;font:800 14px system-ui;color:#161b2c;cursor:pointer}.th-panel>summary::-webkit-details-marker,.th-status-panel>summary::-webkit-details-marker,.th-subsection>summary::-webkit-details-marker{display:none}.th-panel>summary{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(10px)}.th-panel>summary span{font-size:11px;color:#667085;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
-      .th-mobile-config{background:#fff;padding:10px 12px 14px;display:grid;grid-template-columns:minmax(0,1fr);gap:9px;box-sizing:border-box;overflow:visible}.th-mobile-config *{box-sizing:border-box;min-width:0}.th-mobile-config label{font:700 11px/1.4 system-ui;color:#667085;display:flex;flex-direction:column;gap:4px}.th-mobile-config select,.th-mobile-config input{display:block;width:100%;max-width:100%;min-width:0;inline-size:100%;max-inline-size:100%;min-inline-size:0;font:700 14px system-ui;padding:10px 11px;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c;overflow:hidden}.th-picker-field{display:flex;flex-direction:column;gap:4px;position:relative;z-index:1}.th-picker-field.is-open{z-index:1000}.th-picker-label{font:700 11px/1.4 system-ui;color:#667085}.th-custom-picker{position:relative;z-index:1}.th-custom-picker.is-open{z-index:1001}.th-custom-picker-trigger{width:100%;height:46px;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c;font:800 14px system-ui;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer}.th-picker-arrow{position:absolute;right:12px;color:#667085}.th-picker-popover{position:absolute;z-index:1002;left:0;right:0;top:50px;background:#fff;border:1px solid #dfe3ee;border-radius:14px;box-shadow:0 14px 36px rgba(0,0,0,.24);padding:10px;isolation:isolate}.th-picker-popover[hidden]{display:none!important}.th-picker-value{display:none!important}.th-calendar-head{display:grid;grid-template-columns:38px 1fr 38px;align-items:center;gap:6px;margin-bottom:8px}.th-calendar-head strong{text-align:center;font:900 13px system-ui}.th-calendar-head button{height:34px;border:0;border-radius:9px;background:#f3f4f8;color:#344054;font-size:20px;cursor:pointer}.th-calendar-week,.th-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.th-calendar-week span{text-align:center;font:700 10px system-ui;color:#98a2b3;padding:3px 0}.th-calendar-grid button{height:34px;border:0;border-radius:9px;background:#f8f9fc;color:#344054;font:800 11px system-ui;cursor:pointer}.th-calendar-grid button.is-outside{opacity:.3}.th-calendar-grid button.is-selected{background:#5b5ce2;color:#fff}.th-calendar-grid button:hover{outline:1px solid #cfd0ff}.th-time-section{display:flex;flex-direction:column;gap:6px;margin-bottom:9px}.th-time-section>strong{font:800 11px system-ui;color:#667085}.th-time-hour-grid,.th-time-minute-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}.th-time-hour-grid button,.th-time-minute-grid button{height:32px;border:1px solid #e1e4ec;border-radius:8px;background:#f8f9fc;color:#344054;font:800 11px system-ui;cursor:pointer}.th-time-hour-grid button:hover,.th-time-minute-grid button:hover{border-color:#c2c5ff}.th-time-hour-grid button.is-selected,.th-time-minute-grid button.is-selected{background:#5b5ce2;color:#fff;border-color:#5b5ce2}.th-picker-confirm{width:100%;margin-top:2px;border:0;border-radius:10px;padding:10px 12px;background:#5b5ce2;color:#fff;font-weight:800;cursor:pointer}
+      .th-mobile-config{background:#fff;padding:10px 12px 14px;display:grid;grid-template-columns:minmax(0,1fr);gap:9px;box-sizing:border-box;overflow:visible}.th-mobile-config *{box-sizing:border-box;min-width:0}.th-mobile-config label{font:700 11px/1.4 system-ui;color:#667085;display:flex;flex-direction:column;gap:4px}.th-mobile-config select,.th-mobile-config input{display:block;width:100%;max-width:100%;min-width:0;inline-size:100%;max-inline-size:100%;min-inline-size:0;font:700 14px system-ui;padding:10px 11px;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c;overflow:hidden}.th-picker-field{display:flex;flex-direction:column;gap:4px}.th-picker-label{font:700 11px/1.4 system-ui;color:#667085}.th-custom-picker{display:flex;flex-direction:column;gap:6px}.th-custom-picker-trigger{width:100%;height:46px;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c;font:800 14px system-ui;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer}.th-picker-arrow{position:absolute;right:12px;color:#667085}.th-picker-popover{position:static;width:100%;background:#fff;border:1px solid #dfe3ee;border-radius:14px;box-shadow:none;padding:10px;margin-top:0}.th-picker-popover[hidden]{display:none!important}.th-picker-value{display:none!important}.th-calendar-head{display:grid;grid-template-columns:38px 1fr 38px;align-items:center;gap:6px;margin-bottom:8px}.th-calendar-head strong{text-align:center;font:900 13px system-ui}.th-calendar-head button{height:34px;border:0;border-radius:9px;background:#f3f4f8;color:#344054;font-size:20px;cursor:pointer}.th-calendar-week,.th-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.th-calendar-week span{text-align:center;font:700 10px system-ui;color:#98a2b3;padding:3px 0}.th-calendar-grid button{height:34px;border:0;border-radius:9px;background:#f8f9fc;color:#344054;font:800 11px system-ui;cursor:pointer}.th-calendar-grid button.is-outside{opacity:.3}.th-calendar-grid button.is-selected{background:#5b5ce2;color:#fff}.th-calendar-grid button:hover{outline:1px solid #cfd0ff}.th-time-section{display:flex;flex-direction:column;gap:6px;margin-bottom:9px}.th-time-section>strong{font:800 11px system-ui;color:#667085}.th-time-hour-grid,.th-time-minute-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}.th-time-hour-grid button,.th-time-minute-grid button{height:32px;border:1px solid #e1e4ec;border-radius:8px;background:#f8f9fc;color:#344054;font:800 11px system-ui;cursor:pointer}.th-time-hour-grid button:hover,.th-time-minute-grid button:hover{border-color:#c2c5ff}.th-time-hour-grid button.is-selected,.th-time-minute-grid button.is-selected{background:#5b5ce2;color:#fff;border-color:#5b5ce2}.th-picker-confirm{width:100%;margin-top:2px;border:0;border-radius:10px;padding:10px 12px;background:#5b5ce2;color:#fff;font-weight:800;cursor:pointer}
       .th-mobile-config input[type="date"],.th-mobile-config input[type="time"]{width:100%!important;max-width:100%!important;min-width:0!important;inline-size:100%!important;max-inline-size:100%!important;min-inline-size:0!important;overflow:hidden}
       .th-mobile-config input[type="date"]::-webkit-date-and-time-value,.th-mobile-config input[type="time"]::-webkit-date-and-time-value{min-width:0;width:100%;text-align:center}
       .th-mobile-config input[type="date"]::-webkit-datetime-edit,.th-mobile-config input[type="time"]::-webkit-datetime-edit{min-width:0;max-width:100%;overflow:hidden}
@@ -2298,10 +2298,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
     const setDesktopPickerOpen=(picker,open)=>{
       const pop=picker?.querySelector?.('.th-picker-popover');
-      const field=picker?.closest?.('.th-picker-field');
+      const arrow=picker?.querySelector?.('.th-picker-arrow');
       if(pop)pop.hidden=!open;
       picker?.classList?.toggle('is-open',!!open);
-      field?.classList?.toggle('is-open',!!open);
+      if(arrow)arrow.textContent=open?'▴':'▾';
     };
     const closeDesktopPickers=(except=null)=>{
       for(const picker of rootNode.querySelectorAll?.('.th-custom-picker')||[]){
@@ -2409,9 +2409,6 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       el.addEventListener('change',()=>onChange?.(readConfig(rootNode),field,fieldNeedsRerender(field)));
       if(field==='local-name'||field==='local-phone') el.addEventListener('input',()=>onLocalUserInput?.(readConfig(rootNode)));
     }
-    rootNode.addEventListener('pointerdown',(event)=>{
-      if(!event.target?.closest?.('.th-custom-picker'))closeDesktopPickers();
-    });
         restorePanelUiState(rootNode,previousUi);
     return rootNode;
   }
@@ -2720,7 +2717,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.23');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.24');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -2845,7 +2842,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.23');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.24');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
