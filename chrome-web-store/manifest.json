@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ticket Helper PC",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Escape-room booking helper with branch/theme catalog and manual confirmation.",
   "permissions": [
     "storage",

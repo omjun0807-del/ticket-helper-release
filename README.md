@@ -9,11 +9,11 @@ Personal escape-room / reservation helper.
 Both platforms use the same public `ticket-helper.user.js` and the same GitHub sync format.
 
 ## Current releases
-- Userscript core v0.1.39
+- Userscript core v0.1.40
 - PC Violentmonkey userscript: recommended
 - iPhone Safari + Userscripts
-- Legacy unpacked PC extension v0.1.23
-- Chrome Web Store package v0.1.23 (not required for the recommended PC setup)
+- Legacy unpacked PC extension v0.1.24
+- Chrome Web Store package v0.1.24 (not required for the recommended PC setup)
 - Keyescape / Naver Booking adapters + five new partner sites (manual final confirmation)
 - configurable session priority and theme fallback
 - Keyescape branch/theme selection now waits for dynamic options and has a jQuery-change fallback
@@ -66,10 +66,10 @@ It is no longer the recommended PC install path because Chrome cannot let an unp
 
 Personal booking data such as name, phone, cookies, or credentials must never be committed here.
 
-### v0.1.39
+### v0.1.40
 
 선택창 재클릭과 느린 저장 뒤 화면 갱신을 수정했습니다. 네이버 재고 표시가 포함된 회차를 인식하고, 예약 준비 상태와 카운트다운을 표시합니다. 요청한 사이트 테마 120개 중 포스터 117개와 공식 오픈 규칙 75개를 등록했습니다. 자세한 출처와 미확인 항목은 [카탈로그 검토 결과](PARTNER_CATALOG.md)를 확인하세요.
 
-### v0.1.39 수정
+### v0.1.40 수정
 
 회차 미리보기의 generation 참조 오류를 수정했습니다. 제로월드는 달력 로딩과 날짜 변경 후 회차 갱신을 기다립니다. 참여 인원 설정을 추가하고 최종 결제 상한 입력을 제거했습니다. 전체 UI 재설계는 기능 수정 후 실기기 결과를 기준으로 진행합니다.

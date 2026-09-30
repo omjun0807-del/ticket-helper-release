@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.39
+// @version      0.1.40
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -35,7 +35,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.39";
+globalThis.TICKET_HELPER_VERSION="0.1.40";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1674,7 +1674,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     };
   }
 
-  function createBrowserNaverPage(doc=document,win=window){
+  function createBrowserNaverPage(doc=document,win=window,options={}){
     const selectors=deps.NAVER_SELECTORS;
     const textOf=(el)=>String(el?.innerText??el?.textContent??'').replace(/\s+/g,' ').trim();
     const visible=(el)=>{if(!el||typeof el.getBoundingClientRect!=='function')return false;const r=el.getBoundingClientRect(),s=win.getComputedStyle(el);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};
@@ -1723,7 +1723,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }
         return 'timeout';
       },
-      selectParticipants:count=>deps.selectParticipantCount(doc,win,count),
+      selectParticipants:count=>deps.selectParticipantCount(doc,win,count,{isCancelled:options.isCancelled}),
       findExactActions:actions,
       currentHref(){return win.location.href;},
       async waitForNavigation(before){for(let i=0;i<40;i++){await sleep(50);if(win.location.href!==before||win.location.pathname.includes('/request'))return true;}return false;},
@@ -2101,23 +2101,45 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     for(const [key,value] of Object.entries(adapter))if(typeof value==='function')guarded[key]=async(...args)=>{check();const result=await value.apply(guarded,args);check();return result;};
     return guarded;
   }
-  async function selectParticipantCount(doc,win,count){
+  async function selectParticipantCount(doc,win,count,{isCancelled=()=>false,maxWaitMs=8000}={}){
     const n=Number(count);if(!Number.isInteger(n)||n<1||n>20)return false;
-    const text=el=>String(el?.textContent||'').replace(/\s+/g,' ').trim();
+    const text=el=>{const copy=el?.cloneNode?.(true);if(!copy)return '';copy.querySelectorAll('.blind,.necessary_text,i,svg').forEach(node=>node.remove());return String(copy.textContent||'').replace(/\s+/g,' ').trim();};
     const label=new RegExp('^'+n+'\\s*명$');
-    const candidates=[...doc.querySelectorAll('select')].filter(el=>[...el.options].some(o=>label.test(text(o))));
-    if(candidates.length===1){const el=candidates[0],option=[...el.options].find(o=>label.test(text(o))&&!o.disabled);if(!option)return false;el.value=option.value;el.dispatchEvent(new win.Event('input',{bubbles:true}));el.dispatchEvent(new win.Event('change',{bubbles:true}));return el.value===option.value;}
-    const labels=[...doc.querySelectorAll('label,strong,span,h3')].filter(el=>/^참여\s*인원\s*설정/.test(text(el)));
-    for(const heading of labels){let scope=heading.parentElement;
-      for(let i=0;i<5&&scope;i++,scope=scope.parentElement){
-        const triggers=[...scope.querySelectorAll('[role="combobox"],button,[aria-haspopup],a')].filter(el=>/해당하는 항목|항목을 선택/.test(text(el)));
-        if(triggers.length!==1)continue;const trigger=triggers[0];trigger.click();
-        for(let tries=0;tries<20;tries++){
-          const options=[...scope.querySelectorAll('[role="option"],li,button,a')].filter(el=>label.test(text(el))&&!el.disabled&&el.getAttribute('aria-disabled')!=='true').filter(el=>![...el.querySelectorAll('[role="option"],li,button,a')].some(child=>label.test(text(child))));
-          if(options.length===1){options[0].click();return label.test(text(trigger))||options[0].getAttribute('aria-selected')==='true';}
-          await new Promise(resolve=>win.setTimeout(resolve,50));
-        }return false;
+    const sleep=()=>new Promise(resolve=>win.setTimeout(resolve,50));
+    let scope=null,trigger=null;
+    for(let elapsed=0;elapsed<=maxWaitMs;elapsed+=50){
+      if(isCancelled())return false;
+      const candidates=[...doc.querySelectorAll('select')].filter(el=>[...el.options].some(o=>/^\d+\s*명$/.test(text(o))));
+      if(candidates.length>1)return false;
+      if(candidates.length===1){const el=candidates[0],option=[...el.options].find(o=>label.test(text(o))&&!o.disabled);if(el.disabled||!option)return false;
+        const setter=Object.getOwnPropertyDescriptor(el.ownerDocument.defaultView.HTMLSelectElement.prototype,'value')?.set;if(setter)setter.call(el,option.value);else el.value=option.value;
+        el.dispatchEvent(new win.Event('input',{bubbles:true}));el.dispatchEvent(new win.Event('change',{bubbles:true}));return el.value===option.value;
       }
+      const labels=[...doc.querySelectorAll('label,strong,span,h3,.form_title')].filter(el=>/^참여\s*인원\s*설정/.test(text(el)));
+      for(const heading of labels){let parent=heading;
+        for(let i=0;i<5&&parent;i++,parent=parent.parentElement){
+          const official=[...parent.querySelectorAll('.form_select .select_btn')];
+          const buttons=official.length?official:[...parent.querySelectorAll('[role="combobox"],button,[aria-haspopup],a')].filter(el=>el.matches('[role="combobox"]')||/해당하는 항목|항목을 선택/.test(text(el)));
+          const triggers=buttons.filter(el=>!buttons.some(other=>other!==el&&el.contains(other)));
+          if(triggers.length!==1)continue;scope=parent;trigger=triggers[0];break;
+        }if(trigger)break;
+      }
+      if(trigger)break;if(elapsed<maxWaitMs)await sleep();
+    }
+    if(!trigger||isCancelled()||trigger.disabled||trigger.closest('.form_select.disabled'))return false;
+    if(label.test(text(trigger)))return true;
+    if(!scope.querySelector('.select_list')&&trigger.getAttribute('aria-expanded')!=='true')trigger.click();
+    for(let elapsed=0;elapsed<=2000;elapsed+=50){
+      if(isCancelled())return false;
+      const candidates=[...scope.querySelectorAll('.select_list .select_item,[role="option"],li,button,a')].filter(el=>label.test(text(el))&&!el.disabled&&el.getAttribute('aria-disabled')!=='true');
+      const options=candidates.filter(el=>!candidates.some(other=>other!==el&&el.contains(other))).filter(el=>el!==trigger);
+      if(options.length>1)return false;
+      if(options.length===1){options[0].click();
+        for(let i=0;i<20;i++){if(isCancelled())return false;
+          const current=trigger.isConnected?trigger:scope.querySelector('.select_btn,[role="combobox"]');
+          if(label.test(text(current))||options[0].getAttribute('aria-selected')==='true')return true;await sleep();
+        }return false;
+      }await sleep();
     }return false;
   }
   function createPartnerBookingAdapter({page,profile}){
@@ -2245,7 +2267,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   function createPageAdapter(profile, doc=document, win=window, runOptions={}){
     if(!profile) return null;
     if(profile.adapterId==='keyescape') return deps.createKeyescapeAdapter({page:deps.createBrowserKeyescapePage(doc,win),profile});
-    if(profile.adapterId==='naver-booking') return deps.createNaverBookingAdapter({page:deps.createBrowserNaverPage(doc,win),bookingUrl:profile.bookingUrl,paymentPolicy:{maxPaymentAmount:Number(runOptions.maxPaymentAmount)||0}});
+    if(profile.adapterId==='naver-booking') return deps.createNaverBookingAdapter({page:deps.createBrowserNaverPage(doc,win,runOptions),bookingUrl:profile.bookingUrl,paymentPolicy:{maxPaymentAmount:Number(runOptions.maxPaymentAmount)||0}});
     if(['tonybilly','zeroworld','doom'].includes(profile.adapterId))return deps.createPartnerBookingAdapter({page:deps.createBrowserPartnerPage(doc,win,profile),profile});
     return null;
   }
@@ -3076,7 +3098,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.39');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.40');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -3224,7 +3246,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.39');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.40');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
@@ -3246,7 +3268,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const nextAttempt=openTrigger?.attemptsMs?.[openTrigger.nextIndex];
       const baseProfile=openTrigger?{...selected,openingAttempt:true,openingWaitMs:Number.isFinite(nextAttempt)?Math.max(70,Math.min(420,nextAttempt-Date.now())):420}:selected;
       const effectiveProfile=cfg?.trustCurrentPageTheme?{...baseProfile,trustCurrentPageTheme:true,trustCurrentPageDate:true,themeBookingUrl:String(hostRoot.location?.href||selected.themeBookingUrl||selected.bookingUrl||'')}:baseProfile;
-      const rawAdapter=deps.createPageAdapter(effectiveProfile,doc,hostRoot,{maxPaymentAmount:Number(cfg.maxPaymentAmount)||0});
+      const rawAdapter=deps.createPageAdapter(effectiveProfile,doc,hostRoot,{maxPaymentAmount:Number(cfg.maxPaymentAmount)||0,isCancelled:()=>generation!==runGeneration});
       if(!rawAdapter)return null;
       const adapter=deps.withRunCancellation(rawAdapter,()=>generation!==runGeneration);
       const observer=async payload=>{
