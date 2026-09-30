@@ -11,9 +11,19 @@ header span{font-size:11px;color:#667085}
 .hero b{font-size:14px}.hero span{font-size:11px;color:#667085}
 button{width:100%;border:0;border-radius:11px;padding:11px 12px;font-weight:800;cursor:pointer}
 button.primary{background:#5b5ce2;color:#fff}
+button.secondary{background:#f0f1ff;color:#4b4cd3;border:1px solid #d9dbff}
 button:disabled{background:#e9ebf2;color:#98a2b3;cursor:default}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
 .grid>div{background:#fff;border:1px solid #e7e9f2;border-radius:11px;padding:9px}
 .grid small{display:block;color:#98a2b3;font-size:10px;margin-bottom:3px}.grid b{font-size:12px}
+.update-card{margin-top:9px;padding:11px;background:#fff;border:1px solid #e7e9f2;border-radius:12px}
+.update-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.update-head>div{display:flex;flex-direction:column;gap:2px}
+.update-head small,.update-help{color:#667085;font-size:10px;line-height:1.45}
+.update-head b{font-size:12px}
+.update-head>span{font-size:11px;font-weight:800;color:#4b4cd3}
+.update-actions{display:flex;gap:7px;margin-top:9px}
+.update-actions button{flex:1;padding:9px 10px}
+.update-help{display:block;margin-top:8px}
 p{font-size:10px;line-height:1.5;color:#667085;margin:10px 2px 0}
 #message{min-height:16px;margin-top:7px;font-size:10px;font-weight:700;color:#b42318}

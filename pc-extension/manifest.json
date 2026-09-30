@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Ticket Helper PC",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Ticket Helper for Keyescape and Naver Booking on Chrome and Edge.",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "alarms",
+    "downloads"
   ],
   "host_permissions": [
     "https://keyescape.com/*",

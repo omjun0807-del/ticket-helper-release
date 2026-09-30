@@ -11,6 +11,16 @@
     <header><div><strong>Ticket Helper PC</strong><span id="version">v-</span></div><span class="badge" id="pageState">확인 중</span></header>
     <section class="hero"><b id="themeCount">테마 -개</b><span id="syncState">동기화 상태 확인 중</span></section>
     <button id="openPanel" class="primary" type="button">현재 페이지에서 Ticket Helper 열기</button>
+
+    <section class="update-card">
+      <div class="update-head"><div><small>PC 확장 업데이트</small><b id="updateState">확인 중</b></div><span id="latestVersion">-</span></div>
+      <div class="update-actions">
+        <button id="checkUpdate" class="secondary" type="button">지금 확인</button>
+        <button id="showDownload" class="secondary" type="button" hidden>다운로드 위치 열기</button>
+      </div>
+      <small class="update-help">새 버전 ZIP은 자동으로 다운로드됩니다. 압축해제 확장은 파일 교체와 확장 새로고침만 직접 하면 됩니다.</small>
+    </section>
+
     <div class="grid">
       <div><small>자동 동기화</small><b id="autoSync">-</b></div>
       <div><small>GitHub 토큰</small><b id="tokenState">-</b></div>
