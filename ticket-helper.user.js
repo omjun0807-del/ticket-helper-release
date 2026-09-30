@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.14
+// @version      0.1.15
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -13,11 +13,12 @@
 // @grant        GM.setValue
 // @grant        GM.deleteValue
 // @grant        GM.xmlHttpRequest
+// @connect      api.github.com
 // @inject-into  content
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.14";
+globalThis.TICKET_HELPER_VERSION="0.1.15";
 globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surface2:#f0f2f8;--th-text:#161b2c;--th-muted:#667085;--th-border:#e3e6ef;--th-primary:#5b5ce2;--th-primary2:#ececff;--th-success:#159b6c;--th-danger:#e5484d;--th-dark:#20263a;--th-radius:18px;font-family:\"Noto Sans KR\",\"Apple SD Gothic Neo\",system-ui,sans-serif}.th-app{box-sizing:border-box;background:var(--th-bg);color:var(--th-text);padding:16px;border-radius:24px;max-width:420px;line-height:1.45}.th-app *{box-sizing:border-box}.th-header{display:flex;justify-content:space-between;align-items:flex-start;padding:4px 2px 14px}.th-header h1{font-size:20px;margin:2px 0}.th-header p,.th-help{color:var(--th-muted);font-size:12px;margin:3px 0}.th-kicker{font-size:11px;font-weight:700;color:var(--th-primary)}.th-mode,.th-source,.th-health{font-size:11px;padding:6px 9px;border-radius:999px;background:var(--th-primary2);color:var(--th-primary);font-weight:700}.is-live .th-mode{background:#fff0f1;color:var(--th-danger)}.th-card{background:var(--th-surface);border:1px solid var(--th-border);border-radius:var(--th-radius);padding:16px;margin-bottom:12px}.th-row,.th-section-head,.th-status{display:flex;justify-content:space-between;gap:12px;align-items:center}.th-label{display:block;color:var(--th-muted);font-size:10px;margin-bottom:3px}.th-countdown{margin-top:14px;border-radius:12px;background:var(--th-dark);color:#fff;padding:12px;display:flex;justify-content:space-between;align-items:center}.th-countdown b{font-size:20px}.th-section-head h2{font-size:15px;margin:0}.th-chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.th-chip{font-size:11px;background:var(--th-surface2);padding:7px 9px;border-radius:999px}.th-chip-session{background:var(--th-primary2);color:var(--th-primary)}.th-subtitle{font-size:11px;color:var(--th-muted);font-weight:700;margin-top:10px}.th-muted{color:var(--th-muted);font-size:11px}.th-fallback{padding:0;margin:10px 0 0;list-style:none}.th-fallback li{display:flex;gap:9px;align-items:center;padding:7px 0;font-size:12px}.th-fallback li span{width:22px;height:22px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:var(--th-surface2);font-weight:700}.th-status button{border:0;border-radius:12px;background:var(--th-primary);color:#fff;font-weight:800;padding:12px 16px;cursor:pointer}\n";
 
 /* packages/catalog/src/builtin-catalog.js */
@@ -1731,7 +1732,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     localUser:'ticket-helper:local-user',
     checkpoint:'ticket-helper:checkpoint',
     settings:'ticket-helper:settings',
-    backup:'ticket-helper:auto-backup'
+    backup:'ticket-helper:auto-backup',
+    syncConfig:'ticket-helper:sync-config',
+    syncState:'ticket-helper:sync-state'
   });
 
   function createTicketStorage(gm) {
@@ -1790,6 +1793,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         await gm.setValue(KEYS.settings,normalized);
       },
       async getAutoBackup(){ return await gm.getValue(KEYS.backup,null); },
+      async getSyncConfig(){ const v=await gm.getValue(KEYS.syncConfig,null); return v&&typeof v==='object'&&!Array.isArray(v)?v:null; },
+      async setSyncConfig(value){ await gm.setValue(KEYS.syncConfig,value&&typeof value==='object'?value:null); },
+      async getSyncState(){ const v=await gm.getValue(KEYS.syncState,null); return v&&typeof v==='object'&&!Array.isArray(v)?v:null; },
+      async setSyncState(value){ await gm.setValue(KEYS.syncState,value&&typeof value==='object'?value:null); },
       async createAutoBackup(reason='manual'){ return snapshot(reason); },
       async restoreAutoBackup(){
         const backup=await gm.getValue(KEYS.backup,null);
@@ -1854,6 +1861,74 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   return { TICKET_STORAGE_KEYS: KEYS, createTicketStorage, createBrowserGM };
 });
 
+
+/* packages/sync/src/github-sync.js */
+(function(root,factory){
+  const api=factory();
+  if(typeof module==='object'&&module.exports) module.exports=api;
+  root.TicketHelper=Object.assign(root.TicketHelper||{},api);
+})(typeof globalThis!=='undefined'?globalThis:this,function(){
+  'use strict';
+  function syncClone(value){try{return JSON.parse(JSON.stringify(value))}catch{return value}}
+  function sanitizeSyncSettings(settings={}){
+    const out={};
+    for(const key of ['profileId','siteId','branchId','fallbackEnabled','compactView']) if(settings[key]!==undefined) out[key]=settings[key];
+    return out;
+  }
+  function buildSyncPayload(profiles=[],settings={},updatedAt=Date.now(),deviceId=''){
+    return {schemaVersion:1,updatedAt:Number(updatedAt)||Date.now(),deviceId:String(deviceId||''),profiles:syncClone(Array.isArray(profiles)?profiles:[]),settings:sanitizeSyncSettings(settings)};
+  }
+  function chooseSyncDirection({localUpdatedAt=0,remoteUpdatedAt=0,localDirty=false}={}){
+    const local=Number(localUpdatedAt)||0,remote=Number(remoteUpdatedAt)||0;
+    if(localDirty&&remote>local)return 'conflict';
+    if(remote>local)return 'pull';
+    if(local>remote&&localDirty)return 'push';
+    if(local===remote)return 'noop';
+    return localDirty?'push':'noop';
+  }
+  function encodeUtf8Base64(value){
+    const bytes=new TextEncoder().encode(String(value));let binary='';
+    for(const b of bytes)binary+=String.fromCharCode(b);
+    return btoa(binary);
+  }
+  function decodeUtf8Base64(value){
+    const binary=atob(String(value));const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  function parseRepoFullName(value){
+    const parts=String(value||'').trim().split('/');
+    if(parts.length!==2||!parts[0]||!parts[1])throw new Error('GitHub 저장소는 owner/repo 형식이어야 합니다.');
+    return {owner:parts[0],repo:parts[1]};
+  }
+  function createGitHubSyncClient({request,repoFullName,path='sync/ticket-helper-settings.json',branch='sync-data'}={}){
+    if(typeof request!=='function')throw new TypeError('request is required');
+    const parsed=parseRepoFullName(repoFullName);
+    const encodedPath=String(path).split('/').filter(Boolean).map(encodeURIComponent).join('/');
+    const url='https://api.github.com/repos/'+encodeURIComponent(parsed.owner)+'/'+encodeURIComponent(parsed.repo)+'/contents/'+encodedPath;
+    const readUrl=url+'?ref='+encodeURIComponent(branch);
+    const makeHeaders=(token)=>({Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',Authorization:'Bearer '+String(token||'').trim()});
+    async function pull(token){
+      const res=await request({method:'GET',url:readUrl,headers:makeHeaders(token)});const status=Number(res?.status||0);
+      if(status===404)return {exists:false,sha:'',payload:null};
+      if(status<200||status>=300)throw new Error('GitHub 동기화 조회 실패 (HTTP '+(status||'?')+')');
+      const body=JSON.parse(res?.responseText||res?.response||'{}');
+      const raw=decodeUtf8Base64(String(body.content||'').replace(/\s+/g,''));
+      return {exists:true,sha:String(body.sha||''),payload:JSON.parse(raw)};
+    }
+    async function push(token,payload){
+      const current=await pull(token);
+      const data={message:'chore: sync Ticket Helper settings',content:encodeUtf8Base64(JSON.stringify(payload,null,2)),branch};
+      if(current.exists&&current.sha)data.sha=current.sha;
+      const res=await request({method:'PUT',url,headers:{...makeHeaders(token),'Content-Type':'application/json'},data:JSON.stringify(data)});
+      const status=Number(res?.status||0);
+      if(status<200||status>=300)throw new Error('GitHub 동기화 업로드 실패 (HTTP '+(status||'?')+')');
+      return {ok:true};
+    }
+    return {pull,push};
+  }
+  return {sanitizeSyncSettings,buildSyncPayload,chooseSyncDirection,createGitHubSyncClient};
+});
 
 /* apps/userscript/src/page-bridge.js */
 (function (root, factory) {
@@ -1969,7 +2044,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }catch{return new Date(n).toLocaleString('ko-KR');}
   }
 
-  function createMobileConfigMarkup(profiles,state={},viewState={},localUser={}){
+  function createMobileConfigMarkup(profiles,state={},viewState={},localUser={},syncConfig={}){
     const {catalog,site,branch,selected}=resolveSelection(profiles,state);
     const siteOptions=catalog.length?catalog.map(s=>`<option value="${esc(s.id)}"${s.id===site?.id?' selected':''}>${esc(s.name)}</option>`).join(''):'<option value="">등록된 사이트 없음</option>';
     const branchOptions=site?.branches?.length?site.branches.map(b=>`<option value="${esc(b.id)}"${b.id===branch?.id?' selected':''}>${esc(b.name)}</option>`).join(''):'<option value="">등록된 지점 없음</option>';
@@ -1992,6 +2067,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const compact=viewState.compactView!==false;
     const compactSummary=selected?`${selected.themeName||''}${selected.branchName?' · '+selected.branchName:''} · D-${Number.isInteger(openingRule.daysBefore)?openingRule.daysBefore:'?'} ${openingRule.openTime||''}`:'선택된 테마 없음';
     const backupLabel=viewState.backupAt?`최근 자동백업 ${formatBackupAt(viewState.backupAt)}`:'아직 자동백업 없음';
+    const syncStatus=String(viewState.syncStatusText||'연결 안 됨');
+    const syncLast=viewState.syncLastAt?formatBackupAt(viewState.syncLastAt):'아직 동기화 없음';
+    const syncRepo=String(syncConfig.repoFullName||'omjun0807-del/ticket-helper-private');
     return `<details class="th-panel"${open}><summary><strong>Ticket Helper</strong><span>${esc(selected?.themeName||'탭해서 설정')}</span></summary><div class="th-mobile-config">
       <div class="th-top-actions"><button type="button" class="th-scan-button" data-action="scan-current">⌖ 현재 페이지 인식</button><button type="button" class="secondary th-view-toggle" data-action="toggle-compact">${compact?'상세 보기':'간단 보기'}</button></div>
       ${compact?`<div class="th-compact-summary">${esc(compactSummary)}</div>`:`<div class="th-scan-result">${esc(scanText)}</div>${themePreview}`}
@@ -2039,6 +2117,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         <label>오픈 D-<input data-field="profile-days-before" type="number" min="0" max="60" inputmode="numeric" value="${selected.openingRule?.daysBefore??''}"></label>
         ${pickerFieldMarkup({label:'오픈 시각',field:'profile-open-time',type:'time',value:selected.openingRule?.openTime||''})}
       </div></details>`:''}
+      <details class="th-subsection"><summary>기기 동기화 · GitHub</summary><div class="th-subsection-body">
+        <div class="th-sync-status"><strong>${esc(syncStatus)}</strong><span>${esc(syncLast)}</span></div>
+        <label>Private 저장소<input data-field="sync-repo" value="${esc(syncRepo)}" autocomplete="off" spellcheck="false"></label>
+        <label>GitHub 토큰<input data-field="sync-token" type="password" value="" autocomplete="off" placeholder="${syncConfig.hasToken?'토큰 저장됨 · 변경할 때만 새 토큰 입력':'fine-grained token 입력'}"></label>
+        <label class="th-check"><input data-field="sync-auto" type="checkbox"${syncConfig.autoSync?' checked':''}> 자동 동기화</label>
+        <div class="th-warning">테마·지점·오픈 규칙·회차/시간 우선순위만 동기화합니다. 예약자 이름·전화번호·결제상한·실전/확정 모드는 각 기기에만 남습니다. 토큰도 기기 로컬에만 저장됩니다.</div>
+        <div class="th-config-actions"><button type="button" data-action="sync-test" class="secondary">연결 확인</button><button type="button" data-action="sync-pull" class="secondary">내려받기</button><button type="button" data-action="sync-push">업로드</button></div>
+      </div></details>
       <details class="th-subsection"><summary>업데이트 · v${esc(viewState.installedVersion||'?')}</summary><div class="th-subsection-body"><div class="th-warning">새 버전 확인 후 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.</div><button type="button" data-action="check-update" class="secondary">새 버전 확인</button></div></details>
       <details class="th-subsection"><summary>백업 / 복구</summary><div class="th-subsection-body"><div class="th-warning"><strong>${esc(backupLabel)}</strong><br>테마·회차·설정을 변경하기 전 자동 백업을 1개 유지합니다. 이름/연락처는 백업에 포함하지 않습니다.</div><div class="th-config-actions"><button type="button" data-action="restore-auto-backup" class="secondary"${viewState.backupAt?'':' disabled'}>자동백업 복구</button><button type="button" data-action="import-profiles" class="secondary">가져오기</button><button type="button" data-action="export-profiles" class="secondary">내보내기</button></div></div></details>
     </div></details>`;
@@ -2102,7 +2188,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
   }
 
-  function mountUserscriptPanel(host,{profiles=[],state={},viewState={},localUser={},onPrepare,onPracticeNow,onTimingTest,onStop,onChange,onLocalUserInput,onToggleCompact,onImport,onExport,onRestoreBackup,onAddCurrent,onScan,onScanTargetDate,onSessionPriority,onClearSessionPriority,onAddHour,onRemoveHour,onCheckUpdate}={}){
+  function mountUserscriptPanel(host,{profiles=[],state={},viewState={},localUser={},syncConfig={},onPrepare,onPracticeNow,onTimingTest,onStop,onChange,onLocalUserInput,onToggleCompact,onSyncConfig,onSyncTest,onSyncPull,onSyncPush,onImport,onExport,onRestoreBackup,onAddCurrent,onScan,onScanTargetDate,onSessionPriority,onClearSessionPriority,onAddHour,onRemoveHour,onCheckUpdate}={}){
     const rootNode=host.shadowRoot||host.attachShadow?.({mode:'open'})||host;
     const previousUi=capturePanelUiState(rootNode);
     const css=(typeof globalThis!=='undefined'&&globalThis.TICKET_HELPER_CSS)||'';
@@ -2118,8 +2204,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       .th-picker-display{display:block;width:100%;max-width:100%;padding:0 38px 0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font:800 14px/46px system-ui;color:#161b2c;pointer-events:none}
       .th-picker-shell:after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);font:900 13px system-ui;color:#667085;pointer-events:none}
       .th-mobile-config .th-picker-native{position:absolute!important;inset:0!important;display:block!important;width:100%!important;max-width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:11px!important;background:transparent!important;opacity:.001!important;color:transparent!important;-webkit-appearance:none!important;appearance:none!important;z-index:2;cursor:pointer}
-      .th-mobile-config .th-check{flex-direction:row;align-items:center;gap:8px}.th-mobile-config .th-check input{width:auto}.th-mobile-config small{font-weight:500;color:#98a2b3}.th-config-actions{display:flex;gap:8px;flex-wrap:wrap}.th-config-actions button,.th-subsection button,.th-inline-add button,.th-scan-button{flex:1;border:1px solid transparent;border-radius:11px;padding:11px 12px;background:#5b5ce2;color:#fff;font-weight:800;font-size:13px}.th-config-actions button.secondary,.th-subsection button.secondary,.th-view-toggle.secondary{background:#fff;color:#4b4cd3;border-color:#cfd0ff}.th-config-actions button:disabled,.th-subsection button:disabled,.th-inline-add button:disabled{background:#f0f2f8!important;color:#98a2b3!important;border-color:#e4e7ec!important;opacity:1}.th-section-title{font:900 12px system-ui;color:#344054;margin-top:5px;padding-top:8px;border-top:1px solid #eef0f5}.th-section-title:first-of-type{border-top:0}.th-scan-button{width:100%;background:#161b2c}.th-scan-button.secondary{background:#5b5ce2}.th-scan-result{font:600 11px/1.4 system-ui;color:#667085;background:#f6f7fb;border-radius:10px;padding:9px 10px}.th-storage-status{font:700 10px/1.3 system-ui;color:#667085;background:#f8f9fc;border:1px solid #eef0f5;border-radius:999px;padding:6px 9px;width:max-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.th-time-grid{display:flex;gap:7px;flex-wrap:wrap}.th-time-chip,.th-hour-chip{border:1px solid #dfe3ee;border-radius:999px;padding:8px 10px;background:#f7f8fb;color:#344054;font:800 12px system-ui}.th-time-chip.selected{background:#ececff;color:#4b4cd3;border-color:#cfd0ff}.th-time-chip b,.th-hour-chip b{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;border-radius:999px;background:#5b5ce2;color:#fff;font-size:10px}.th-inline-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.th-inline-add button{flex:none}.th-theme-preview{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;align-items:center;padding:9px;border:1px solid #eef0f5;border-radius:12px;background:#fbfcfe}.th-theme-preview img,.th-theme-placeholder{width:72px;height:72px;object-fit:cover;border-radius:10px;background:#eef0f5}.th-theme-placeholder{display:grid;place-items:center;font-size:28px}.th-theme-preview div:last-child{display:flex;flex-direction:column;gap:3px;min-width:0}.th-theme-preview strong{font:900 14px system-ui;color:#161b2c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.th-theme-preview span{font:700 11px system-ui;color:#667085}.th-theme-preview small{font:700 10px system-ui;color:#5b5ce2}.th-link-button{border:0;background:transparent;color:#5b5ce2;font:800 12px system-ui;text-align:left;padding:2px}.th-empty{font:600 11px system-ui;color:#98a2b3}.th-warning{font:600 10px/1.45 system-ui;color:#7a5b00;background:#fff8dd;border-radius:10px;padding:9px 10px}.th-subsection{border:1px solid #eef0f5;border-radius:12px;background:#fbfcfe}.th-subsection>summary{font-size:12px;padding:10px 11px}.th-subsection-body{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:0 10px 10px;min-width:0;max-width:100%;overflow:hidden}.th-subsection-body>label{min-width:0;max-width:100%}.th-divider{height:1px;background:#eef0f5;margin:2px 0}.th-status-panel{margin-top:7px}.th-status-panel>summary{gap:10px}.th-status-summary{min-width:0;max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font:700 10px/1.3 system-ui;color:#667085}.th-status-content{max-height:34vh;overflow:auto}.th-top-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.th-view-toggle{flex:none!important;white-space:nowrap}.th-compact-summary{font:800 11px/1.35 system-ui;color:#344054;background:#f6f7fb;border-radius:10px;padding:9px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.th-help{font:600 10px/1.45 system-ui;color:#667085;background:#f6f7fb;border-radius:9px;padding:8px 9px}
-    </style><div class="th-shell">${createMobileConfigMarkup(profiles,state,viewState,localUser)}<details class="th-status-panel"><summary><span>상태 / 상세</span><small class="th-status-summary">${esc((viewState.mode==='practice'?'연습':viewState.mode==='confirm'?'확정':'실전')+' · '+(viewState.statusText||'대기')+' · 오픈 '+(viewState.openingText||'확인 필요'))}</small></summary><div class="th-status-content">${deps.createAppMarkup?deps.createAppMarkup(viewState):''}</div></details></div>`;
+      .th-mobile-config .th-check{flex-direction:row;align-items:center;gap:8px}.th-mobile-config .th-check input{width:auto}.th-mobile-config small{font-weight:500;color:#98a2b3}.th-config-actions{display:flex;gap:8px;flex-wrap:wrap}.th-config-actions button,.th-subsection button,.th-inline-add button,.th-scan-button{flex:1;border:1px solid transparent;border-radius:11px;padding:11px 12px;background:#5b5ce2;color:#fff;font-weight:800;font-size:13px}.th-config-actions button.secondary,.th-subsection button.secondary,.th-view-toggle.secondary{background:#fff;color:#4b4cd3;border-color:#cfd0ff}.th-config-actions button:disabled,.th-subsection button:disabled,.th-inline-add button:disabled{background:#f0f2f8!important;color:#98a2b3!important;border-color:#e4e7ec!important;opacity:1}.th-section-title{font:900 12px system-ui;color:#344054;margin-top:5px;padding-top:8px;border-top:1px solid #eef0f5}.th-section-title:first-of-type{border-top:0}.th-scan-button{width:100%;background:#161b2c}.th-scan-button.secondary{background:#5b5ce2}.th-scan-result{font:600 11px/1.4 system-ui;color:#667085;background:#f6f7fb;border-radius:10px;padding:9px 10px}.th-storage-status{font:700 10px/1.3 system-ui;color:#667085;background:#f8f9fc;border:1px solid #eef0f5;border-radius:999px;padding:6px 9px;width:max-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.th-time-grid{display:flex;gap:7px;flex-wrap:wrap}.th-time-chip,.th-hour-chip{border:1px solid #dfe3ee;border-radius:999px;padding:8px 10px;background:#f7f8fb;color:#344054;font:800 12px system-ui}.th-time-chip.selected{background:#ececff;color:#4b4cd3;border-color:#cfd0ff}.th-time-chip b,.th-hour-chip b{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;border-radius:999px;background:#5b5ce2;color:#fff;font-size:10px}.th-inline-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.th-inline-add button{flex:none}.th-theme-preview{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;align-items:center;padding:9px;border:1px solid #eef0f5;border-radius:12px;background:#fbfcfe}.th-theme-preview img,.th-theme-placeholder{width:72px;height:72px;object-fit:cover;border-radius:10px;background:#eef0f5}.th-theme-placeholder{display:grid;place-items:center;font-size:28px}.th-theme-preview div:last-child{display:flex;flex-direction:column;gap:3px;min-width:0}.th-theme-preview strong{font:900 14px system-ui;color:#161b2c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.th-theme-preview span{font:700 11px system-ui;color:#667085}.th-theme-preview small{font:700 10px system-ui;color:#5b5ce2}.th-link-button{border:0;background:transparent;color:#5b5ce2;font:800 12px system-ui;text-align:left;padding:2px}.th-empty{font:600 11px system-ui;color:#98a2b3}.th-warning{font:600 10px/1.45 system-ui;color:#7a5b00;background:#fff8dd;border-radius:10px;padding:9px 10px}.th-subsection{border:1px solid #eef0f5;border-radius:12px;background:#fbfcfe}.th-subsection>summary{font-size:12px;padding:10px 11px}.th-subsection-body{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:0 10px 10px;min-width:0;max-width:100%;overflow:hidden}.th-subsection-body>label{min-width:0;max-width:100%}.th-divider{height:1px;background:#eef0f5;margin:2px 0}.th-status-panel{margin-top:7px}.th-status-panel>summary{gap:10px}.th-status-summary{min-width:0;max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font:700 10px/1.3 system-ui;color:#667085}.th-status-content{max-height:34vh;overflow:auto}.th-top-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.th-view-toggle{flex:none!important;white-space:nowrap}.th-compact-summary{font:800 11px/1.35 system-ui;color:#344054;background:#f6f7fb;border-radius:10px;padding:9px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.th-help{font:600 10px/1.45 system-ui;color:#667085;background:#f6f7fb;border-radius:9px;padding:8px 9px}.th-sync-status{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f6f7fb;border-radius:9px;padding:8px 9px;font:700 10px/1.35 system-ui;color:#667085}.th-sync-status strong{color:#344054}.th-sync-status span{white-space:nowrap}
+    </style><div class="th-shell">${createMobileConfigMarkup(profiles,state,viewState,localUser,syncConfig)}<details class="th-status-panel"><summary><span>상태 / 상세</span><small class="th-status-summary">${esc((viewState.mode==='practice'?'연습':viewState.mode==='confirm'?'확정':'실전')+' · '+(viewState.statusText||'대기')+' · 오픈 '+(viewState.openingText||'확인 필요'))}</small></summary><div class="th-status-content">${deps.createAppMarkup?deps.createAppMarkup(viewState):''}</div></details></div>`;
     rootNode.querySelector('[data-action="prepare"]')?.addEventListener('click',()=>onPrepare?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="practice-now"]')?.addEventListener('click',()=>onPracticeNow?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="timing-test"]')?.addEventListener('click',()=>onTimingTest?.(readConfig(rootNode)));
@@ -2130,6 +2216,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     rootNode.querySelector('[data-action="import-profiles"]')?.addEventListener('click',()=>onImport?.());
     rootNode.querySelector('[data-action="export-profiles"]')?.addEventListener('click',()=>onExport?.());
     rootNode.querySelector('[data-action="restore-auto-backup"]')?.addEventListener('click',()=>onRestoreBackup?.());
+    rootNode.querySelector('[data-action="sync-test"]')?.addEventListener('click',()=>onSyncTest?.(readConfig(rootNode)));
+    rootNode.querySelector('[data-action="sync-pull"]')?.addEventListener('click',()=>onSyncPull?.(readConfig(rootNode)));
+    rootNode.querySelector('[data-action="sync-push"]')?.addEventListener('click',()=>onSyncPush?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="check-update"]')?.addEventListener('click',()=>onCheckUpdate?.());
     rootNode.querySelector('[data-action="add-current"]')?.addEventListener('click',()=>onAddCurrent?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="clear-session-priority"]')?.addEventListener('click',()=>onClearSessionPriority?.(readConfig(rootNode)));
@@ -2151,9 +2240,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       el.addEventListener('change',()=>syncPickerDisplay(el));
     }
     for(const el of rootNode.querySelectorAll?.('[data-field]')||[]){
-      if(String(el.dataset?.field||'').startsWith('new-')||el.dataset?.field==='hour-to-add') continue;
-      el.addEventListener('change',()=>onChange?.(readConfig(rootNode),el.dataset.field,fieldNeedsRerender(el.dataset.field)));
-      if(el.dataset?.field==='local-name'||el.dataset?.field==='local-phone') el.addEventListener('input',()=>onLocalUserInput?.(readConfig(rootNode)));
+      const field=String(el.dataset?.field||'');
+      if(field.startsWith('new-')||field==='hour-to-add') continue;
+      if(field.startsWith('sync-')){el.addEventListener('change',()=>onSyncConfig?.(readConfig(rootNode)));continue;}
+      el.addEventListener('change',()=>onChange?.(readConfig(rootNode),field,fieldNeedsRerender(field)));
+      if(field==='local-name'||field==='local-phone') el.addEventListener('input',()=>onLocalUserInput?.(readConfig(rootNode)));
     }
     restorePanelUiState(rootNode,previousUi);
     return rootNode;
@@ -2165,7 +2256,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     captchaAutoResume:!!rootNode.querySelector('[data-field="captcha-auto-resume"]')?.checked,maxPaymentAmount:rootNode.querySelector('[data-field="max-payment-amount"]')?.value||'',
     localName:rootNode.querySelector('[data-field="local-name"]')?.value||'',localPhone:rootNode.querySelector('[data-field="local-phone"]')?.value||'',
     profileThemeName:rootNode.querySelector('[data-field="profile-theme-name"]')?.value||'',profileBranchName:rootNode.querySelector('[data-field="profile-branch-name"]')?.value||'',profileDaysBefore:rootNode.querySelector('[data-field="profile-days-before"]')?.value||'',profileOpenTime:rootNode.querySelector('[data-field="profile-open-time"]')?.value||'',
-    newBranchName:rootNode.querySelector('[data-field="new-branch-name"]')?.value||'',newThemeName:rootNode.querySelector('[data-field="new-theme-name"]')?.value||'',newDaysBefore:rootNode.querySelector('[data-field="new-days-before"]')?.value||'',newOpenTime:rootNode.querySelector('[data-field="new-open-time"]')?.value||''
+    newBranchName:rootNode.querySelector('[data-field="new-branch-name"]')?.value||'',newThemeName:rootNode.querySelector('[data-field="new-theme-name"]')?.value||'',newDaysBefore:rootNode.querySelector('[data-field="new-days-before"]')?.value||'',newOpenTime:rootNode.querySelector('[data-field="new-open-time"]')?.value||'',
+    syncRepo:rootNode.querySelector('[data-field="sync-repo"]')?.value||'',syncToken:rootNode.querySelector('[data-field="sync-token"]')?.value||'',syncAuto:!!rootNode.querySelector('[data-field="sync-auto"]')?.checked
   };}
 
   return {buildOverlayState,catalogFromProfiles,resolveSelection,createMobileConfigMarkup,applyMobilePriorityConfig,applyMobileProfileConfig,safeImageUrl,fieldNeedsRerender,capturePanelUiState,restorePanelUiState,mountUserscriptPanel,readConfig};
@@ -2441,12 +2533,16 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
     let checkpoint=await storage.getCheckpoint();
     let localUser=await storage.getLocalUser()||{};
+    let syncConfig=await storage.getSyncConfig?.()||{repoFullName:'omjun0807-del/ticket-helper-private',token:'',autoSync:false,deviceId:''};
+    if(!syncConfig.repoFullName)syncConfig.repoFullName='omjun0807-del/ticket-helper-private';
+    if(!syncConfig.deviceId){syncConfig.deviceId='device-'+Math.random().toString(36).slice(2,10)+'-'+Date.now().toString(36);await storage.setSyncConfig?.(syncConfig);}
+    let syncState=await storage.getSyncState?.()||{localUpdatedAt:0,lastRemoteUpdatedAt:0,lastSyncAt:0,dirty:false,status:'연결 안 됨'};
     const host=doc.createElement('div');host.id='ticket-helper-root';doc.documentElement.appendChild(host);
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
     const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:settings.fallbackEnabled!==false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:settings.maxPaymentAmount||'',compactView:settings.compactView!==false,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0)};
-    let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null;
+    let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
 
     function selectedProfile(){return profiles.find(p=>p.id===state.profileId)||profiles[0]||null;}
     function viewData(){
@@ -2458,7 +2554,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.14');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.15');
+      viewState.syncStatusText=syncStatusText;
+      viewState.syncLastAt=Number(syncState.lastSyncAt||0);
       return {profile:p,schedule,viewState};
     }
 
@@ -2479,7 +2577,71 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         profiles=typeof deps.applyMobileProfileConfig==='function'?deps.applyMobileProfileConfig(profiles,cfg):deps.applyMobilePriorityConfig(profiles,cfg);
         await storage.setProfiles(profiles); backupInfo=await storage.getAutoBackup?.()||backupInfo;
       }
+      if(['site','branch','profile','fallback','profile-theme-name','profile-branch-name','profile-days-before','profile-open-time'].includes(changedField))await markSyncDirty();
       return settingsCfg;
+    }
+
+    function syncUiConfig(){return {repoFullName:syncConfig.repoFullName||'omjun0807-del/ticket-helper-private',autoSync:!!syncConfig.autoSync,hasToken:!!String(syncConfig.token||'').trim()};}
+    async function saveSyncConfigFromUi(cfg={}){
+      const repo=String(cfg.syncRepo||syncConfig.repoFullName||'omjun0807-del/ticket-helper-private').trim();
+      if(repo)syncConfig.repoFullName=repo;
+      if(String(cfg.syncToken||'').trim())syncConfig.token=String(cfg.syncToken).trim();
+      syncConfig.autoSync=!!cfg.syncAuto;
+      await storage.setSyncConfig?.(syncConfig);
+      if(syncConfig.autoSync&&syncConfig.token)scheduleAutoSync(800);
+      render();
+    }
+    function githubSyncClient(){
+      if(typeof gm.xmlHttpRequest!=='function')throw new Error('현재 Userscripts에서 GitHub 요청 기능을 사용할 수 없습니다.');
+      if(!String(syncConfig.token||'').trim())throw new Error('GitHub 동기화 토큰을 먼저 입력해 주세요.');
+      return deps.createGitHubSyncClient({request:(details)=>gm.xmlHttpRequest(details),repoFullName:syncConfig.repoFullName||'omjun0807-del/ticket-helper-private'});
+    }
+    async function setSyncState(next){syncState={...syncState,...next};await storage.setSyncState?.(syncState);syncStatusText=String(syncState.status||syncStatusText||'대기');}
+    async function markSyncDirty(){await setSyncState({localUpdatedAt:Date.now(),dirty:true,status:syncConfig.autoSync&&syncConfig.token?'변경 감지 · 동기화 대기':'로컬 변경 있음'});if(syncConfig.autoSync&&syncConfig.token)scheduleAutoSync(1600);}
+    function scheduleAutoSync(delay=1600){if(!syncConfig.autoSync||!syncConfig.token)return;if(syncTimer!==null)hostRoot.clearTimeout?.(syncTimer);syncTimer=hostRoot.setTimeout?.(()=>{syncTimer=null;performGitHubSync('auto').catch(()=>{});},delay);}
+    async function applyRemoteSync(remote){
+      const payload=remote?.payload;
+      if(!payload||Number(payload.schemaVersion)!==1||!Array.isArray(payload.profiles))throw new Error('원격 동기화 파일 형식이 올바르지 않습니다.');
+      profiles=payload.profiles;
+      const remoteSettings=deps.sanitizeSyncSettings(payload.settings||{});
+      Object.assign(state,remoteSettings);
+      const existing=await storage.getSettings();
+      await storage.setProfiles(profiles);
+      await storage.setSettings({...existing,...remoteSettings});
+      await setSyncState({localUpdatedAt:Number(payload.updatedAt||Date.now()),lastRemoteUpdatedAt:Number(payload.updatedAt||0),lastSyncAt:Date.now(),dirty:false,status:'동기화 완료 · 내려받음'});
+      render();return payload;
+    }
+    async function pushLocalSync(client,updatedAt=Date.now()){
+      const stamp=Number(updatedAt)||Date.now();
+      const payload=deps.buildSyncPayload(profiles,state,stamp,syncConfig.deviceId||'');
+      await client.push(syncConfig.token,payload);
+      await setSyncState({localUpdatedAt:stamp,lastRemoteUpdatedAt:stamp,lastSyncAt:Date.now(),dirty:false,status:'동기화 완료 · 업로드'});
+      render();return payload;
+    }
+    async function performGitHubSync(mode='auto'){
+      if(syncBusy)return {status:'busy'};
+      syncBusy=true;syncStatusText='GitHub 확인 중…';render();
+      try{
+        const client=githubSyncClient();
+        const remote=await client.pull(syncConfig.token);
+        if(mode==='test'){await setSyncState({lastSyncAt:Date.now(),status:remote.exists?'연결 정상 · 동기화 파일 있음':'연결 정상 · 첫 업로드 필요'});render();return {status:'ok'};}
+        if(mode==='pull'){if(!remote.exists)throw new Error('아직 원격 동기화 파일이 없습니다. 이 기기에서 먼저 업로드해 주세요.');await applyRemoteSync(remote);return {status:'pulled'};}
+        if(mode==='push'){
+          const remoteAt=Number(remote?.payload?.updatedAt||0),localAt=Number(syncState.localUpdatedAt||0);
+          if(remote.exists&&remoteAt>localAt&&!hostRoot.confirm?.('다른 기기의 동기화 데이터가 더 최신입니다. 그래도 이 기기 설정으로 덮어쓸까요?')){syncStatusText='업로드 취소';render();return {status:'cancelled'};}
+          await pushLocalSync(client,Date.now());return {status:'pushed'};
+        }
+        if(!remote.exists){await pushLocalSync(client,Date.now());return {status:'pushed'};}
+        const decision=deps.chooseSyncDirection({localUpdatedAt:Number(syncState.localUpdatedAt||0),remoteUpdatedAt:Number(remote.payload?.updatedAt||0),localDirty:!!syncState.dirty});
+        if(decision==='pull'){await applyRemoteSync(remote);return {status:'pulled'};}
+        if(decision==='push'){await pushLocalSync(client,Number(syncState.localUpdatedAt||Date.now()));return {status:'pushed'};}
+        if(decision==='conflict'){await setSyncState({status:'동기화 충돌 · 수동으로 내려받기/업로드 선택'});render();return {status:'conflict'};}
+        await setSyncState({lastSyncAt:Date.now(),lastRemoteUpdatedAt:Number(remote.payload?.updatedAt||0),status:'동기화 최신'});render();return {status:'noop'};
+      }catch(err){
+        await setSyncState({status:'동기화 오류'});render();
+        if(mode!=='auto')hostRoot.alert?.('GitHub 동기화 실패: '+String(err?.message||err));
+        return {status:'error',error:err};
+      }finally{syncBusy=false;}
     }
 
     function targetFor(profile,targetDate){return deps.prepareTargetUrl(profile.adapterId,profile.bookingUrl,targetDate);}
@@ -2507,7 +2669,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.14');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.15');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
@@ -2624,13 +2786,17 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
     render=()=>{
       const {profile,schedule,viewState}=viewData();
-      deps.mountUserscriptPanel(host,{profiles,state,viewState,localUser,
+      deps.mountUserscriptPanel(host,{profiles,state,viewState,localUser,syncConfig:syncUiConfig(),
         onChange:async (cfg,field,needsRerender)=>{await persistConfig(cfg,field);if(needsRerender)render();},
         onLocalUserInput:cfg=>{localUser={name:cfg.localName||'',phone:cfg.localPhone||''};if(localUserSaveTimer!==null)hostRoot.clearTimeout?.(localUserSaveTimer);localUserSaveTimer=hostRoot.setTimeout?.(()=>{storage.setLocalUser(localUser).catch?.(()=>{});localUserSaveTimer=null;},400);},
-        onToggleCompact:async()=>{state.compactView=state.compactView===false;await storage.setSettings(state);render();},
+        onToggleCompact:async()=>{state.compactView=state.compactView===false;await storage.setSettings(state);await markSyncDirty();render();},
+        onSyncConfig:async cfg=>saveSyncConfigFromUi(cfg),
+        onSyncTest:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('test');},
+        onSyncPull:async cfg=>{await saveSyncConfigFromUi(cfg);if(syncState.dirty&&!hostRoot.confirm?.('이 기기의 아직 동기화되지 않은 변경사항을 원격 설정으로 덮어쓸까요?'))return;return performGitHubSync('pull');},
+        onSyncPush:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('push');},
         onStop:async()=>{clearReload();await storage.clearCheckpoint();},
-        onImport:async()=>{const raw=hostRoot.prompt?.('백업한 프로필 JSON을 붙여넣으세요.','')||'';if(!raw.trim())return;profiles=await storage.importProfiles(raw);state.profileId=profiles[0]?.id||'';await storage.setSettings(state);render();},
-        onRestoreBackup:async()=>{const backup=await storage.getAutoBackup?.();if(!backup?.profiles){hostRoot.alert?.('복구할 자동 백업이 없습니다.');return;}const when=backup.at?new Date(backup.at).toLocaleString('ko-KR'):'최근';if(!hostRoot.confirm?.(`${when} 자동 백업으로 테마/회차/설정을 되돌릴까요? 이름·연락처는 변경하지 않습니다.`))return;const restored=await storage.restoreAutoBackup();if(!restored){hostRoot.alert?.('자동 백업 복구에 실패했습니다.');return;}profiles=restored.profiles||[];Object.assign(state,restored.settings||{});backupInfo=await storage.getAutoBackup?.()||null;render();hostRoot.alert?.('자동 백업을 복구했습니다.');},
+        onImport:async()=>{const raw=hostRoot.prompt?.('백업한 프로필 JSON을 붙여넣으세요.','')||'';if(!raw.trim())return;profiles=await storage.importProfiles(raw);state.profileId=profiles[0]?.id||'';await storage.setSettings(state);await markSyncDirty();render();},
+        onRestoreBackup:async()=>{const backup=await storage.getAutoBackup?.();if(!backup?.profiles){hostRoot.alert?.('복구할 자동 백업이 없습니다.');return;}const when=backup.at?new Date(backup.at).toLocaleString('ko-KR'):'최근';if(!hostRoot.confirm?.(`${when} 자동 백업으로 테마/회차/설정을 되돌릴까요? 이름·연락처는 변경하지 않습니다.`))return;const restored=await storage.restoreAutoBackup();if(!restored){hostRoot.alert?.('자동 백업 복구에 실패했습니다.');return;}profiles=restored.profiles||[];Object.assign(state,restored.settings||{});backupInfo=await storage.getAutoBackup?.()||null;await markSyncDirty();render();hostRoot.alert?.('자동 백업을 복구했습니다.');},
         onExport:async()=>{const json=await storage.exportProfiles();if(hostRoot.navigator?.clipboard?.writeText){try{await hostRoot.navigator.clipboard.writeText(json);hostRoot.alert?.('백업 JSON을 클립보드에 복사했습니다.');return;}catch{}}hostRoot.prompt?.('아래 백업 JSON을 복사하세요.',json);},
         onCheckUpdate:async()=>checkUpdate(true),
         onScan:async cfg=>{try{
@@ -2667,14 +2833,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
           pageScan={...ctx,sessions:result.sessions};
           const updated=await storage.saveObservedSchedule(p.id,cfg.targetDate,result.sessions,Date.now());
-          if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;}
+          if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;await markSyncDirty();}
           render();
         }catch(err){hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(err?.message||err)}`);}},
-        onSessionPriority:async (cfg,time)=>{const p=profiles.find(x=>x.id===cfg.profileId);if(!p){return} if(!cfg.targetDate){hostRoot.alert?.('목표 날짜를 먼저 선택해 주세요.');return;} const sessions=pageScan?.sessions||[]; if(sessions.length){const updated=deps.saveObservedSchedule(p,cfg.targetDate,sessions,Date.now());const i=profiles.findIndex(x=>x.id===p.id);profiles[i]=updated;} const i=profiles.findIndex(x=>x.id===p.id);const kind=deps.dayKind(cfg.targetDate);const templates={...(profiles[i].sessionTemplates||{})};const tpl={...(templates[kind]||{kind,times:[],userPriority:[],mismatchPolicy:'exact-then-nearest'})};const priority=Array.isArray(tpl.userPriority)?tpl.userPriority.slice():[];const pos=priority.indexOf(time);if(pos>=0)priority.splice(pos,1);else priority.push(time);templates[kind]={...tpl,userPriority:priority};profiles[i]={...profiles[i],sessionTemplates:templates};await storage.setProfiles(profiles);render();},
-        onClearSessionPriority:async cfg=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0||!cfg.targetDate)return;const kind=deps.dayKind(cfg.targetDate);const templates={...(profiles[i].sessionTemplates||{})};if(templates[kind])templates[kind]={...templates[kind],userPriority:[]};profiles[i]={...profiles[i],sessionTemplates:templates};await storage.setProfiles(profiles);render();},
-        onAddHour:async (cfg,hour)=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0)return;profiles[i]={...profiles[i],timePriorities:deps.addHourPriority(profiles[i].timePriorities||[],hour)};await storage.setProfiles(profiles);render();},
-        onRemoveHour:async (cfg,hour)=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0)return;profiles[i]={...profiles[i],timePriorities:deps.removeHourPriority(profiles[i].timePriorities||[],hour)};await storage.setProfiles(profiles);render();},
-        onAddCurrent:async cfg=>{try{const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);const created=createProfileFromCurrentPage({url:hostRoot.location.href,branchName:cfg.newBranchName||ctx.branchName,themeName:cfg.newThemeName||ctx.themeName,daysBefore:Number(cfg.newDaysBefore),openTime:cfg.newOpenTime,imageUrl:ctx.imageUrl},deps);const duplicate=profiles.find(p=>typeof deps.semanticProfileKey==='function'?deps.semanticProfileKey(p)===deps.semanticProfileKey(created):p.id===created.id);if(duplicate&&!hostRoot.confirm?.(`이미 저장된 테마입니다: ${duplicate.themeName}\n현재 페이지 정보로 업데이트할까요?`))return;profiles=typeof deps.upsertProfileByIdentity==='function'?deps.upsertProfileByIdentity(profiles,created):[...profiles,created];const saved=profiles.find(p=>typeof deps.semanticProfileKey==='function'&&deps.semanticProfileKey(p)===deps.semanticProfileKey(created))||profiles.find(p=>p.id===created.id)||created;state.profileId=saved.id;state.siteId=saved.siteId;state.branchId=String(saved.branchId||'');await storage.setProfiles(profiles);await storage.setSettings(state);render();hostRoot.alert?.(`테마 등록 완료: ${saved.themeName}`);}catch(err){hostRoot.alert?.(`테마 등록 실패: ${String(err?.message||err)}`);}},
+        onSessionPriority:async (cfg,time)=>{const p=profiles.find(x=>x.id===cfg.profileId);if(!p){return} if(!cfg.targetDate){hostRoot.alert?.('목표 날짜를 먼저 선택해 주세요.');return;} const sessions=pageScan?.sessions||[]; if(sessions.length){const updated=deps.saveObservedSchedule(p,cfg.targetDate,sessions,Date.now());const i=profiles.findIndex(x=>x.id===p.id);profiles[i]=updated;} const i=profiles.findIndex(x=>x.id===p.id);const kind=deps.dayKind(cfg.targetDate);const templates={...(profiles[i].sessionTemplates||{})};const tpl={...(templates[kind]||{kind,times:[],userPriority:[],mismatchPolicy:'exact-then-nearest'})};const priority=Array.isArray(tpl.userPriority)?tpl.userPriority.slice():[];const pos=priority.indexOf(time);if(pos>=0)priority.splice(pos,1);else priority.push(time);templates[kind]={...tpl,userPriority:priority};profiles[i]={...profiles[i],sessionTemplates:templates};await storage.setProfiles(profiles);await markSyncDirty();render();},
+        onClearSessionPriority:async cfg=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0||!cfg.targetDate)return;const kind=deps.dayKind(cfg.targetDate);const templates={...(profiles[i].sessionTemplates||{})};if(templates[kind])templates[kind]={...templates[kind],userPriority:[]};profiles[i]={...profiles[i],sessionTemplates:templates};await storage.setProfiles(profiles);await markSyncDirty();render();},
+        onAddHour:async (cfg,hour)=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0)return;profiles[i]={...profiles[i],timePriorities:deps.addHourPriority(profiles[i].timePriorities||[],hour)};await storage.setProfiles(profiles);await markSyncDirty();render();},
+        onRemoveHour:async (cfg,hour)=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0)return;profiles[i]={...profiles[i],timePriorities:deps.removeHourPriority(profiles[i].timePriorities||[],hour)};await storage.setProfiles(profiles);await markSyncDirty();render();},
+        onAddCurrent:async cfg=>{try{const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);const created=createProfileFromCurrentPage({url:hostRoot.location.href,branchName:cfg.newBranchName||ctx.branchName,themeName:cfg.newThemeName||ctx.themeName,daysBefore:Number(cfg.newDaysBefore),openTime:cfg.newOpenTime,imageUrl:ctx.imageUrl},deps);const duplicate=profiles.find(p=>typeof deps.semanticProfileKey==='function'?deps.semanticProfileKey(p)===deps.semanticProfileKey(created):p.id===created.id);if(duplicate&&!hostRoot.confirm?.(`이미 저장된 테마입니다: ${duplicate.themeName}\n현재 페이지 정보로 업데이트할까요?`))return;profiles=typeof deps.upsertProfileByIdentity==='function'?deps.upsertProfileByIdentity(profiles,created):[...profiles,created];const saved=profiles.find(p=>typeof deps.semanticProfileKey==='function'&&deps.semanticProfileKey(p)===deps.semanticProfileKey(created))||profiles.find(p=>p.id===created.id)||created;state.profileId=saved.id;state.siteId=saved.siteId;state.branchId=String(saved.branchId||'');await storage.setProfiles(profiles);await storage.setSettings(state);await markSyncDirty();render();hostRoot.alert?.(`테마 등록 완료: ${saved.themeName}`);}catch(err){hostRoot.alert?.(`테마 등록 실패: ${String(err?.message||err)}`);}},
         onPrepare:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);return armOrExecute(selected,{...cfg,profileId:selected?.id||cfg.profileId});},
         onPracticeNow:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}return armOrExecute(selected,{...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true});},
         onTimingTest:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const result=await armTimingTest(selected,{...cfg,profileId:selected.id},10000);if(result?.stage==='timing-test-armed')hostRoot.alert?.('10초 후 실제 오픈 트리거와 같은 경로로 연습 실행합니다. 목표 날짜는 현재 사이트에서 예약 가능한 날짜여야 합니다.');return result;}
@@ -2684,6 +2850,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     render();
     const updateSafePath=!/reservation1\.php|reservation2\.php|\/request(?:\/|$)/i.test(hostRoot.location?.pathname||'');
     if(!checkpoint&&updateSafePath) hostRoot.setTimeout?.(()=>{checkUpdate(false);},1500);
+    if(syncConfig.autoSync&&syncConfig.token&&!checkpoint) scheduleAutoSync(2200);
 
     if(settings.pendingTargetScan&&state.targetDate){
       const pendingProfile=profiles.find(p=>p.id===settings.pendingTargetScanProfileId)||initialProfile;
