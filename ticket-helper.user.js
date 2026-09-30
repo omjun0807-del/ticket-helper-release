@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.37
+// @version      0.1.38
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -35,7 +35,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.37";
+globalThis.TICKET_HELPER_VERSION="0.1.38";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -59,7 +59,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   root.TicketHelper=Object.assign(root.TicketHelper||{},api);
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const BUILTIN_CATALOG_VERSION='2026-10-01-partners-2';
+  const BUILTIN_CATALOG_VERSION='2026-10-01-partners-3';
   const VERIFIED_AT='2026-09-30';
 
   function normalizedName(value){
@@ -151,6 +151,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       id:local.id||builtin.id,
       bookingUrl:local.bookingUrl||builtin.bookingUrl,
       themeBookingUrl:local.themeBookingUrl||builtin.themeBookingUrl||'',
+      themeId:builtin.siteId==='doom'&&String(local.themeId)===String(builtin.id).split('-').pop()?builtin.themeId:(local.themeId||builtin.themeId),
       openingRule:local.openingRule||builtin.openingRule,
       openingRuleStatus:local.openingRule?(local.openingRuleStatus||"configured"):builtin.openingRuleStatus,
       openingRuleSourceUrl:local.openingRule?local.openingRuleSourceUrl:builtin.openingRuleSourceUrl,
@@ -3054,7 +3055,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.37');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.38');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -3202,7 +3203,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.37');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.38');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
@@ -3378,7 +3379,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     render=deps.createPanelRenderScheduler(host.shadowRoot||host.attachShadow({mode:'open'}),()=>{
       const {profile,schedule,viewState}=viewData();
       deps.mountUserscriptPanel(host,{profiles,state,viewState,localUser,syncConfig:syncUiConfig(),
-        onChange:async (cfg,field,needsRerender)=>{const saving=persistConfig(cfg,field);if(needsRerender)render();else deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));await saving;},
+        onChange:async (cfg,field,needsRerender)=>{const saving=persistConfig(cfg,field);if(needsRerender)render();else deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));await saving;if(!needsRerender)deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));},
         onLocalUserInput:cfg=>{localUser={name:cfg.localName||'',phone:cfg.localPhone||''};deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));if(localUserSaveTimer!==null)hostRoot.clearTimeout?.(localUserSaveTimer);localUserSaveTimer=hostRoot.setTimeout?.(()=>{storage.setLocalUser(localUser).catch?.(()=>{});localUserSaveTimer=null;},400);},
         onToggleCompact:async()=>{state.compactView=state.compactView===false;await storage.setSettings(state);await markSyncDirty();render();},
         onSyncConfig:async cfg=>saveSyncConfigFromUi(cfg),

@@ -9,7 +9,7 @@ Personal escape-room / reservation helper.
 Both platforms use the same public `ticket-helper.user.js` and the same GitHub sync format.
 
 ## Current releases
-- Userscript core v0.1.37
+- Userscript core v0.1.38
 - PC Violentmonkey userscript: recommended
 - iPhone Safari + Userscripts
 - Legacy unpacked PC extension v0.1.22
@@ -66,6 +66,6 @@ It is no longer the recommended PC install path because Chrome cannot let an unp
 
 Personal booking data such as name, phone, cookies, or credentials must never be committed here.
 
-### v0.1.37
+### v0.1.38
 
 선택창 재클릭과 느린 저장 뒤 화면 갱신을 수정했습니다. 네이버 재고 표시가 포함된 회차를 인식하고, 예약 준비 상태와 카운트다운을 표시합니다. 요청한 사이트 테마 120개 중 포스터 117개와 공식 오픈 규칙 75개를 등록했습니다. 자세한 출처와 미확인 항목은 [카탈로그 검토 결과](PARTNER_CATALOG.md)를 확인하세요.
