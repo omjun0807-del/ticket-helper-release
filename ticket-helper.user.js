@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.32
+// @version      0.1.33
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.32";
+globalThis.TICKET_HELPER_VERSION="0.1.33";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -421,7 +421,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   root.TicketHelper=Object.assign(root.TicketHelper||{},api);
 })(typeof globalThis!=='undefined'?globalThis:this,function(deps){
   'use strict';
-  const RETRYABLE=new Set(['date-missing','date-disabled','session-container-missing','session-unavailable']);
+  const RETRYABLE=new Set(['date-missing','date-disabled','sessions-not-loaded','session-container-missing','session-unavailable']);
   function createOpenTrigger(targetDate,rule,options={}){
     const openAt=deps.calculateOpeningInstant(targetDate,rule);
     return {version:1,targetDate,openAtMs:openAt.getTime(),attemptsMs:deps.buildOpenWindow(openAt,rule,options),nextIndex:0};
@@ -2226,7 +2226,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       <label>지점<select data-field="branch">${branchOptions}</select></label>
       <label>테마<select data-field="profile">${themeOptions}</select></label>
       ${pickerFieldMarkup({label:'목표 날짜',field:'target-date',type:'date',value:state.targetDate||''})}
-      <button type="button" class="th-scan-button secondary" data-action="scan-target-date">목표일 회차 불러오기</button>
+      <button type="button" class="th-scan-button secondary" data-action="scan-target-date">목표일 회차 미리보기 (선택)</button>
+      <div class="th-help">오픈 전 날짜가 비활성화되어 미리보기가 안 돼도 실전 실행에는 영향 없습니다. 저장된 회차 우선순위를 사용하고, 오픈 시각에 실제 회차를 새로 읽습니다.</div>
 
       <div class="th-section-title">실제 회차 우선순위 <small>원하는 순서대로 탭</small></div>
       <div class="th-time-grid">${sessionButtons}</div>
@@ -2245,8 +2246,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       <label>예약자 이름<input data-field="local-name" autocomplete="name" value="${esc(localUser.name||'')}"></label>
       <label>연락처<input data-field="local-phone" inputmode="tel" autocomplete="tel" value="${esc(localUser.phone||'')}" placeholder="01012345678"></label>
       <div class="th-config-actions"><button type="button" data-action="prepare"${selected?'':' disabled'}>티켓팅 준비</button><button type="button" data-action="stop" class="secondary">중지</button></div>
-      <div class="th-config-actions"><button type="button" data-action="practice-now" class="secondary"${selected?'':' disabled'}>즉시 연습 테스트</button><button type="button" data-action="timing-test" class="secondary"${selected?'':' disabled'}>10초 오픈 테스트</button></div>
-      <div class="th-warning">연습 테스트는 실제 오픈시간을 기다리지 않습니다. ‘10초 오픈 테스트’는 10초 뒤 실제 오픈 트리거와 같은 재개 경로를 확인합니다. 목표 날짜 자체가 사이트에서 비활성화되어 있으면 날짜 선택 단계에서 멈춥니다.</div>
+      <div class="th-config-actions"><button type="button" data-action="practice-now" class="secondary"${selected?'':' disabled'}>즉시 연습 테스트</button><button type="button" data-action="timing-test" class="secondary"${selected?'':' disabled'}>10초 동작 테스트</button></div>
+      <div class="th-warning">10초 동작 테스트는 현재 불러온 예약 가능 회차에서 타이머 → 회차 선택 → NEXT 흐름을 확인합니다. 미래 날짜의 실제 활성화 여부는 서버가 정하므로 실전 오픈 시각에만 검증됩니다.</div>
 
       <details class="th-subsection"><summary>현재 페이지 새로 등록</summary><div class="th-subsection-body">
         <div class="th-help">현재 열려 있는 예약 페이지를 새 항목으로 저장합니다. 같은 테마가 이미 있으면 덮어쓰기 전에 확인합니다.</div>
@@ -2732,6 +2733,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     if(!profile?.openingRule||!state?.targetDate||typeof helpers.createOpenTrigger!=='function')return null;
     let trigger;
     try{trigger=helpers.createOpenTrigger(state.targetDate,profile.openingRule);}catch{return null;}
+    if(profile.adapterId==='keyescape'&&Number.isFinite(trigger.openAtMs))trigger.attemptsMs=[...new Set([...(trigger.attemptsMs||[]),trigger.openAtMs+900,trigger.openAtMs+1600])].sort((a,b)=>a-b);
     const last=trigger.attemptsMs?.[trigger.attemptsMs.length-1];
     if(!Number.isFinite(last)||nowMs>last+1500)return null;
     return helpers.createPersistedCheckpoint({profileId:profile.id,stage:'armed',targetDate:state.targetDate,mode:state.mode||'practice',fallbackCursor:state.fallbackCursor,now:()=>nowMs,extra:{autoContinue:true,openTrigger:trigger,events:[]}});
@@ -2829,7 +2831,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.32');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.33');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -2932,6 +2934,15 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       reloadTimer=hostRoot.setTimeout(()=>hostRoot.location.reload(),delay);
       return true;
     }
+    function scheduleInPageResume(checkpointToResume,atMs){
+      clearReload();
+      if(!checkpointToResume||!Number.isFinite(atMs))return false;
+      reloadTimer=hostRoot.setTimeout(()=>{
+        reloadTimer=null;
+        resumePersisted(checkpointToResume).catch?.(err=>hostRoot.alert?.('오픈 실행 재개 실패: '+String(err?.message||err)));
+      },Math.max(0,atMs-Date.now()));
+      return true;
+    }
 
     async function checkUpdate(force=false){
       if(hostRoot.TICKET_HELPER_EXTENSION){
@@ -2954,7 +2965,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.32');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.33');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
@@ -3031,6 +3042,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if(action.kind==='exhausted'){await storage.clearCheckpoint();return {stage:'armed-exhausted'};}
         checkpoint=deps.createPersistedCheckpoint({profileId:selected.id,stage:'armed',targetDate:cfg.targetDate,mode:cfg.mode,fallbackCursor:cp.fallbackCursor,now:Date.now,extra:{autoContinue:true,openTrigger:action.state,events:cp.events||[]}});
         await storage.setCheckpoint(checkpoint);
+        if(selected.adapterId==='keyescape'&&Number.isFinite(action.atMs)&&Number.isFinite(action.state?.openAtMs)&&action.atMs<action.state.openAtMs){
+          scheduleInPageResume(checkpoint,action.state.openAtMs);
+          return {stage:'prefire-ready',openAtMs:action.state.openAtMs};
+        }
         return execute(selected,cfg,cp.fallbackCursor,action.state);
       }
       if(cp.stage==='filling-form'||cp.stage==='awaiting-captcha'){
@@ -3067,6 +3082,21 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
     async function armTimingTest(selected,cfg,delayMs=10000){
       if(!selected||!cfg.targetDate)return null;
+      if(!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME){
+        if(!canPracticeOnCurrentPage(selected,cfg)){
+          hostRoot.alert?.('10초 동작 테스트는 현재 예약 가능한 날짜의 회차를 먼저 불러온 뒤 사용할 수 있습니다. 실제 티켓팅 준비/실전 실행은 회차 미리보기 없이도 가능합니다.');
+          return {stage:'timing-test-needs-current-sessions'};
+        }
+        clearReload();
+        checkpoint=null;
+        await storage.clearCheckpoint();
+        const testCfg={...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true,skipTargetNavigation:true,trustCurrentPageTheme:true};
+        reloadTimer=hostRoot.setTimeout(()=>{
+          reloadTimer=null;
+          execute(selected,testCfg,undefined,undefined).catch?.(err=>hostRoot.alert?.('10초 동작 테스트 실패: '+String(err?.message||err)));
+        },Math.max(1000,Math.round(Number(delayMs)||10000)));
+        return {stage:'timing-test-in-place',delayMs};
+      }
       const testCfg={...cfg,mode:'practice',profileId:selected.id};
       const armed=createTimingTestCheckpoint(selected,testCfg,deps,Date.now(),delayMs);
       if(!armed)return null;
@@ -3124,7 +3154,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             hostRoot.location.href=result.navigateTo;
             return;
           }
-          if(!result?.ok){hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(result?.message||result?.stage||'알 수 없는 오류')}`);return;}
+          if(!result?.ok){const preopen=['date-disabled','sessions-not-loaded'].includes(String(result?.stage||''));hostRoot.alert?.(preopen?'현재는 목표일 회차를 미리 볼 수 없습니다. 오픈 전/비활성 상태일 수 있습니다. 실전 실행은 회차 미리보기 없이도 가능합니다.':`목표일 회차 미리보기 실패: ${String(result?.message||result?.stage||'알 수 없는 오류')}`);return;}
           const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
           pageScan={...ctx,sessions:result.sessions,profileId:p.id,targetDate:cfg.targetDate};
           const updated=await storage.saveObservedSchedule(p.id,cfg.targetDate,result.sessions,Date.now());
@@ -3138,7 +3168,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         onAddCurrent:async cfg=>{try{const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);const created=createProfileFromCurrentPage({url:hostRoot.location.href,branchName:cfg.newBranchName||ctx.branchName,themeName:cfg.newThemeName||ctx.themeName,daysBefore:Number(cfg.newDaysBefore),openTime:cfg.newOpenTime,imageUrl:ctx.imageUrl},deps);const duplicate=profiles.find(p=>typeof deps.semanticProfileKey==='function'?deps.semanticProfileKey(p)===deps.semanticProfileKey(created):p.id===created.id);if(duplicate&&!hostRoot.confirm?.(`이미 저장된 테마입니다: ${duplicate.themeName}\n현재 페이지 정보로 업데이트할까요?`))return;profiles=typeof deps.upsertProfileByIdentity==='function'?deps.upsertProfileByIdentity(profiles,created):[...profiles,created];const saved=profiles.find(p=>typeof deps.semanticProfileKey==='function'&&deps.semanticProfileKey(p)===deps.semanticProfileKey(created))||profiles.find(p=>p.id===created.id)||created;state.profileId=saved.id;state.siteId=saved.siteId;state.branchId=String(saved.branchId||'');await storage.setProfiles(profiles);await storage.setSettings(state);await markSyncDirty();render();hostRoot.alert?.(`테마 등록 완료: ${saved.themeName}`);}catch(err){hostRoot.alert?.(`테마 등록 실패: ${String(err?.message||err)}`);}},
         onPrepare:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);return armOrExecute(selected,{...cfg,profileId:selected?.id||cfg.profileId});},
         onPracticeNow:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const inPlace=canPracticeOnCurrentPage(selected,cfg);return armOrExecute(selected,{...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true,skipTargetNavigation:inPlace,trustCurrentPageTheme:inPlace});},
-        onTimingTest:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const result=await armTimingTest(selected,{...cfg,profileId:selected.id},10000);if(result?.stage==='timing-test-armed')hostRoot.alert?.('10초 후 실제 오픈 트리거와 같은 경로로 연습 실행합니다. 목표 날짜는 현재 사이트에서 예약 가능한 날짜여야 합니다.');return result;}
+        onTimingTest:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const result=await armTimingTest(selected,{...cfg,profileId:selected.id},10000);if(result?.stage==='timing-test-in-place')hostRoot.alert?.('10초 후 현재 불러온 회차에서 선택 → NEXT 흐름을 연습합니다. 미래 날짜 활성화는 실전 오픈 시각에 별도로 처리됩니다.');else if(result?.stage==='timing-test-armed')hostRoot.alert?.('10초 후 오픈 트리거 재개 흐름을 연습합니다.');return result;}
       });
       return {profile,schedule};
     };
@@ -3203,7 +3233,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             await storage.setSettings(state);
             render();
           }else{
-            hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(result?.message||result?.stage||'알 수 없는 오류')}`);
+            const preopen=['date-disabled','sessions-not-loaded'].includes(String(result?.stage||''));hostRoot.alert?.(preopen?'현재는 목표일 회차를 미리 볼 수 없습니다. 오픈 전/비활성 상태일 수 있습니다. 실전 실행은 계속 사용할 수 있습니다.':`목표일 회차 미리보기 실패: ${String(result?.message||result?.stage||'알 수 없는 오류')}`);
           }
         }catch(err){
           state.pendingTargetScan=false;
