@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.27
+// @version      0.1.28
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.27";
+globalThis.TICKET_HELPER_VERSION="0.1.28";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -2720,13 +2720,13 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }catch{return String(url||'');}
   }
 
-  async function scanTargetDateSessions({profile,targetDate,doc=hostRoot.document,win=hostRoot,helpers=deps,pollMs=80,maxWaitMs=2200,sleep=(ms)=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+  async function scanTargetDateSessions({profile,targetDate,doc=hostRoot.document,win=hostRoot,helpers=deps,pollMs=80,maxWaitMs=2200,skipLocationNavigation=false,sleep=(ms)=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
     if(!profile) return {ok:false,stage:'profile-missing',message:'테마를 먼저 선택하세요.'};
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(targetDate||''))) return {ok:false,stage:'date-missing',message:'목표 날짜를 먼저 선택하세요.'};
     const targetUrl=typeof helpers.prepareProfileTargetUrl==='function'?helpers.prepareProfileTargetUrl(profile,targetDate):(typeof helpers.prepareTargetUrl==='function'?helpers.prepareTargetUrl(profile.adapterId,profile.themeBookingUrl||profile.bookingUrl,targetDate):(profile.themeBookingUrl||profile.bookingUrl));
     const currentUrl=String(win?.location?.href||'');
     const locationMatches=typeof helpers.sameBookingLocation==='function'?helpers.sameBookingLocation(currentUrl,targetUrl):(!currentUrl||!targetUrl||currentUrl===targetUrl);
-    if(currentUrl&&targetUrl&&!locationMatches) return {ok:false,stage:'navigating',message:'선택한 지점 예약 페이지로 이동합니다.',navigateTo:targetUrl};
+    if(currentUrl&&targetUrl&&!locationMatches&&!skipLocationNavigation) return {ok:false,stage:'navigating',message:'선택한 지점 예약 페이지로 이동합니다.',navigateTo:targetUrl};
     const adapter=helpers.createPageAdapter?.(profile,doc,win);
     if(!adapter) return {ok:false,stage:'adapter-missing',message:'현재 페이지에서 예약 어댑터를 만들 수 없습니다.'};
     if(typeof adapter.selectTheme==='function'){
@@ -2792,7 +2792,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.27');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.28');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -2917,7 +2917,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.27');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.28');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
@@ -3058,6 +3058,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           await persistConfig(cfg,'target-date');
           const p=profiles.find(x=>x.id===cfg.profileId)||selectedProfile();
           if(!p){hostRoot.alert?.('테마를 먼저 등록/선택해 주세요.');return;}
+          state.pendingTargetScanNavigateCount=0;
           const result=await scanTargetDateSessions({profile:p,targetDate:cfg.targetDate,doc,win:hostRoot,helpers:deps});
           if(result?.reloadCurrentPage){
             state.pendingTargetScan=true;
@@ -3073,6 +3074,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             state.pendingTargetScanProfileId=p.id;
             state.pendingTargetScanTargetDate=cfg.targetDate;
             state.pendingTargetScanResetCount=Number(state.pendingTargetScanResetCount||0);
+            state.pendingTargetScanNavigateCount=1;
             await storage.setSettings(state);
             hostRoot.location.href=result.navigateTo;
             return;
@@ -3104,9 +3106,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const pendingProfile=profiles.find(p=>p.id===settings.pendingTargetScanProfileId)||initialProfile;
       const pendingDate=String(settings.pendingTargetScanTargetDate||state.targetDate||'');
       const resetCount=Number(settings.pendingTargetScanResetCount||0);
+      const navigateCount=Number(settings.pendingTargetScanNavigateCount||0);
       if(pendingProfile&&pendingDate){
         try{
-          const result=await scanTargetDateSessions({profile:pendingProfile,targetDate:pendingDate,doc,win:hostRoot,helpers:deps});
+          const skipLocationNavigation=!!pendingProfile.themeBookingUrl&&navigateCount>=1;
+          const result=await scanTargetDateSessions({profile:pendingProfile,targetDate:pendingDate,doc,win:hostRoot,helpers:deps,skipLocationNavigation});
           if(result?.reloadCurrentPage&&resetCount<2){
             state.pendingTargetScan=true;
             state.pendingTargetScanProfileId=pendingProfile.id;
@@ -3117,10 +3121,21 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             return true;
           }
           if(result?.navigateTo){
+            if(navigateCount>=1){
+              state.pendingTargetScan=false;
+              state.pendingTargetScanProfileId='';
+              state.pendingTargetScanTargetDate='';
+              state.pendingTargetScanResetCount=0;
+              state.pendingTargetScanNavigateCount=0;
+              await storage.setSettings(state);
+              hostRoot.alert?.('반복 페이지 이동을 차단했습니다. 현재 페이지에서 테마를 다시 인식해 주세요.');
+              return true;
+            }
             state.pendingTargetScan=true;
             state.pendingTargetScanProfileId=pendingProfile.id;
             state.pendingTargetScanTargetDate=pendingDate;
             state.pendingTargetScanResetCount=resetCount;
+            state.pendingTargetScanNavigateCount=navigateCount+1;
             await storage.setSettings(state);
             hostRoot.location.href=result.navigateTo;
             return true;
@@ -3129,6 +3144,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           state.pendingTargetScanProfileId='';
           state.pendingTargetScanTargetDate='';
           state.pendingTargetScanResetCount=0;
+          state.pendingTargetScanNavigateCount=0;
           await storage.setSettings(state);
           if(result?.ok){
             state.profileId=pendingProfile.id;
@@ -3147,6 +3163,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }catch(err){
           state.pendingTargetScan=false;
           state.pendingTargetScanResetCount=0;
+          state.pendingTargetScanNavigateCount=0;
           await storage.setSettings(state);
           hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(err?.message||err)}`);
         }
