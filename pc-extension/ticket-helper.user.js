@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.16
+// @version      0.1.17
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.16";
+globalThis.TICKET_HELPER_VERSION="0.1.17";
 globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surface2:#f0f2f8;--th-text:#161b2c;--th-muted:#667085;--th-border:#e3e6ef;--th-primary:#5b5ce2;--th-primary2:#ececff;--th-success:#159b6c;--th-danger:#e5484d;--th-dark:#20263a;--th-radius:18px;font-family:\"Noto Sans KR\",\"Apple SD Gothic Neo\",system-ui,sans-serif}.th-app{box-sizing:border-box;background:var(--th-bg);color:var(--th-text);padding:16px;border-radius:24px;max-width:420px;line-height:1.45}.th-app *{box-sizing:border-box}.th-header{display:flex;justify-content:space-between;align-items:flex-start;padding:4px 2px 14px}.th-header h1{font-size:20px;margin:2px 0}.th-header p,.th-help{color:var(--th-muted);font-size:12px;margin:3px 0}.th-kicker{font-size:11px;font-weight:700;color:var(--th-primary)}.th-mode,.th-source,.th-health{font-size:11px;padding:6px 9px;border-radius:999px;background:var(--th-primary2);color:var(--th-primary);font-weight:700}.is-live .th-mode{background:#fff0f1;color:var(--th-danger)}.th-card{background:var(--th-surface);border:1px solid var(--th-border);border-radius:var(--th-radius);padding:16px;margin-bottom:12px}.th-row,.th-section-head,.th-status{display:flex;justify-content:space-between;gap:12px;align-items:center}.th-label{display:block;color:var(--th-muted);font-size:10px;margin-bottom:3px}.th-countdown{margin-top:14px;border-radius:12px;background:var(--th-dark);color:#fff;padding:12px;display:flex;justify-content:space-between;align-items:center}.th-countdown b{font-size:20px}.th-section-head h2{font-size:15px;margin:0}.th-chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.th-chip{font-size:11px;background:var(--th-surface2);padding:7px 9px;border-radius:999px}.th-chip-session{background:var(--th-primary2);color:var(--th-primary)}.th-subtitle{font-size:11px;color:var(--th-muted);font-weight:700;margin-top:10px}.th-muted{color:var(--th-muted);font-size:11px}.th-fallback{padding:0;margin:10px 0 0;list-style:none}.th-fallback li{display:flex;gap:9px;align-items:center;padding:7px 0;font-size:12px}.th-fallback li span{width:22px;height:22px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:var(--th-surface2);font-weight:700}.th-status button{border:0;border-radius:12px;background:var(--th-primary);color:#fff;font-weight:800;padding:12px 16px;cursor:pointer}\n";
 
 /* packages/catalog/src/builtin-catalog.js */
@@ -2161,7 +2161,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const activeField=active?.dataset?.field||'';
     return {
       panelScrollTop:Number(panel?.scrollTop||0),
-      panelOpen:!!panel?.open,
+      panelOpen:panel?!!panel.open:undefined,
       statusScrollTop:Number(status?.scrollTop||0),
       activeField,
       selectionStart:Number.isInteger(active?.selectionStart)?active.selectionStart:null,
@@ -2171,7 +2171,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   function restorePanelUiState(rootNode,state={}){
     const apply=()=>{
       const panel=rootNode?.querySelector?.('.th-panel'); const status=rootNode?.querySelector?.('.th-status-content');
-      if(panel){panel.open=state.panelOpen!==false;panel.scrollTop=Number(state.panelScrollTop||0);}
+      if(panel){if(typeof state.panelOpen==='boolean')panel.open=state.panelOpen;panel.scrollTop=Number(state.panelScrollTop||0);}
       if(status)status.scrollTop=Number(state.statusScrollTop||0);
     };
     apply();
@@ -2239,6 +2239,17 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     for(const el of rootNode.querySelectorAll?.('.th-picker-native')||[]){
       el.addEventListener('input',()=>syncPickerDisplay(el));
       el.addEventListener('change',()=>syncPickerDisplay(el));
+    }
+    for(const shell of rootNode.querySelectorAll?.('.th-picker-shell')||[]){
+      shell.addEventListener('click',(event)=>{
+        const el=shell.querySelector?.('.th-picker-native');
+        if(!el)return;
+        if(typeof el.showPicker==='function'){try{el.showPicker();return;}catch{}}
+        if(event.target!==el){
+          try{el.focus({preventScroll:true});}catch{try{el.focus()}catch{}}
+          try{el.click();}catch{}
+        }
+      });
     }
     for(const el of rootNode.querySelectorAll?.('[data-field]')||[]){
       const field=String(el.dataset?.field||'');
@@ -2555,7 +2566,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.16');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.17');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.syncStatusText=syncStatusText;
       viewState.syncLastAt=Number(syncState.lastSyncAt||0);
@@ -2675,7 +2686,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.16');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.17');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
