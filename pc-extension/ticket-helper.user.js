@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.31
+// @version      0.1.32
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.31";
+globalThis.TICKET_HELPER_VERSION="0.1.32";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1109,18 +1109,23 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const day = page.findDay(target.day);
         if (!day) return resultFail('date-missing', 'target date not found');
         if (day.enabled === false) return resultFail('date-disabled', 'target date is not enabled');
-        page.clickElement(day.element || day);
+        const targets=Array.isArray(day.elements)&&day.elements.length?day.elements:[day.element||day];
         if(typeof page.listSessionDescriptors==='function'){
-          const started=Date.now();
-          while(Date.now()-started<2500){
-            let descriptors=[];
-            try{descriptors=page.listSessionDescriptors()||[];}catch{}
-            const sessions=deps.parseSessionDescriptors(descriptors);
-            if(Array.isArray(sessions)&&sessions.length)return resultOk({sessionsLoaded:true});
-            await sleep(35);
+          const deadline=Date.now()+3200;
+          for(let index=0;index<targets.length&&Date.now()<deadline;index++){
+            page.clickElement(targets[index]);
+            const attemptUntil=Math.min(deadline,Date.now()+(index===targets.length-1?3200:650));
+            while(Date.now()<attemptUntil){
+              let descriptors=[];
+              try{descriptors=page.listSessionDescriptors()||[];}catch{}
+              const sessions=deps.parseSessionDescriptors(descriptors);
+              if(Array.isArray(sessions)&&sessions.length)return resultOk({sessionsLoaded:true,dayClickAttempt:index+1});
+              await sleep(35);
+            }
           }
-          return resultFail('sessions-not-loaded','target date was selected but session buttons did not appear');
+          return resultFail('sessions-not-loaded','target date click did not open session buttons');
         }
+        page.clickElement(targets[0]);
         return resultOk();
       },
 
@@ -1410,16 +1415,35 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const info = monthInfo();
         if (!info) return null;
         const box = calendarBox(info.element);
-        const matches = unique([...box.querySelectorAll('button,a,[role="button"],td,div,span')]
-          .filter(visible).filter((el) => textOf(el) === String(day))
-          .map((el) => el.closest?.('button,a,[role="button"],td') || el));
-        if (!matches.length) return null;
-        const el = matches[0];
-        const style = win.getComputedStyle(el);
-        const enabled = !(el.disabled || el.getAttribute?.('aria-disabled') === 'true' || style.pointerEvents === 'none');
-        return { element: el, id: el.id, text: String(day), enabled };
+        const raw = unique([...box.querySelectorAll('button,a,[role="button"],td,div,span')]
+          .filter(visible).filter((el) => textOf(el) === String(day)));
+        if (!raw.length) return null;
+        const candidates=[];
+        const push=(el,priority)=>{
+          if(!el||!visible(el)||candidates.some(x=>x.el===el))return;
+          const style=win.getComputedStyle(el);
+          const disabled=!!el.disabled||el.getAttribute?.('aria-disabled')==='true'||style.pointerEvents==='none';
+          const tag=String(el.tagName||'').toLowerCase();
+          const interactive=/^(button|a)$/.test(tag)||el.getAttribute?.('role')==='button'||el.hasAttribute?.('onclick')||typeof el.onclick==='function';
+          candidates.push({el,priority:priority+(interactive?100:0)+(style.cursor==='pointer'?20:0)-(tag==='td'&&!interactive?20:0),disabled});
+        };
+        for(const node of raw){
+          push(node.closest?.('button,a,[role="button"],[onclick]'),40);
+          push(node,30);
+          push(node.closest?.('td'),10);
+        }
+        candidates.sort((a,b)=>b.priority-a.priority);
+        const enabledCandidates=candidates.filter(x=>!x.disabled);
+        const elements=(enabledCandidates.length?enabledCandidates:candidates).map(x=>x.el);
+        if(!elements.length)return null;
+        const el=elements[0];
+        return { element:el, elements, id:el.id, text:String(day), enabled:enabledCandidates.length>0 };
       },
-      clickElement(el) { el?.click?.(); return true; },
+      clickElement(el) {
+        if(!el)return false;
+        try{el.scrollIntoView?.({block:'center',inline:'center',behavior:'instant'});}catch{}
+        try{el.click?.();return true;}catch{return false;}
+      },
       listSessionDescriptors() {
         const seen = new Set(), out = [];
         for (const node of doc.querySelectorAll('button,a,[role="button"],div,span')) {
@@ -2805,7 +2829,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.31');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.32');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -2930,7 +2954,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.31');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.32');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
