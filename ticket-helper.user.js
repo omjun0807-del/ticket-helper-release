@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.17
+// @version      0.1.18
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.17";
+globalThis.TICKET_HELPER_VERSION="0.1.18";
 globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surface2:#f0f2f8;--th-text:#161b2c;--th-muted:#667085;--th-border:#e3e6ef;--th-primary:#5b5ce2;--th-primary2:#ececff;--th-success:#159b6c;--th-danger:#e5484d;--th-dark:#20263a;--th-radius:18px;font-family:\"Noto Sans KR\",\"Apple SD Gothic Neo\",system-ui,sans-serif}.th-app{box-sizing:border-box;background:var(--th-bg);color:var(--th-text);padding:16px;border-radius:24px;max-width:420px;line-height:1.45}.th-app *{box-sizing:border-box}.th-header{display:flex;justify-content:space-between;align-items:flex-start;padding:4px 2px 14px}.th-header h1{font-size:20px;margin:2px 0}.th-header p,.th-help{color:var(--th-muted);font-size:12px;margin:3px 0}.th-kicker{font-size:11px;font-weight:700;color:var(--th-primary)}.th-mode,.th-source,.th-health{font-size:11px;padding:6px 9px;border-radius:999px;background:var(--th-primary2);color:var(--th-primary);font-weight:700}.is-live .th-mode{background:#fff0f1;color:var(--th-danger)}.th-card{background:var(--th-surface);border:1px solid var(--th-border);border-radius:var(--th-radius);padding:16px;margin-bottom:12px}.th-row,.th-section-head,.th-status{display:flex;justify-content:space-between;gap:12px;align-items:center}.th-label{display:block;color:var(--th-muted);font-size:10px;margin-bottom:3px}.th-countdown{margin-top:14px;border-radius:12px;background:var(--th-dark);color:#fff;padding:12px;display:flex;justify-content:space-between;align-items:center}.th-countdown b{font-size:20px}.th-section-head h2{font-size:15px;margin:0}.th-chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.th-chip{font-size:11px;background:var(--th-surface2);padding:7px 9px;border-radius:999px}.th-chip-session{background:var(--th-primary2);color:var(--th-primary)}.th-subtitle{font-size:11px;color:var(--th-muted);font-weight:700;margin-top:10px}.th-muted{color:var(--th-muted);font-size:11px}.th-fallback{padding:0;margin:10px 0 0;list-style:none}.th-fallback li{display:flex;gap:9px;align-items:center;padding:7px 0;font-size:12px}.th-fallback li span{width:22px;height:22px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:var(--th-surface2);font-weight:700}.th-status button{border:0;border-radius:12px;background:var(--th-primary);color:#fff;font-weight:800;padding:12px 16px;cursor:pointer}\n";
 
 /* packages/catalog/src/builtin-catalog.js */
@@ -2193,9 +2193,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const rootNode=host.shadowRoot||host.attachShadow?.({mode:'open'})||host;
     const previousUi=capturePanelUiState(rootNode);
     const css=(typeof globalThis!=='undefined'&&globalThis.TICKET_HELPER_CSS)||'';
+    const isDesktopExtension=!!(typeof globalThis!=='undefined'&&globalThis.TICKET_HELPER_EXTENSION);
     rootNode.innerHTML=`<style>${css}
       :host{all:initial}.th-shell{position:fixed;left:auto;right:max(8px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));width:min(390px,calc(100vw - 42px));max-width:390px;margin-left:auto;z-index:2147483647;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",system-ui,sans-serif}
-      .th-panel,.th-status-panel{pointer-events:auto;background:#fff;border:1px solid #e3e6ef;border-radius:18px;box-shadow:0 14px 42px rgba(0,0,0,.22);overflow:hidden;box-sizing:border-box}.th-panel[open]{max-height:min(72dvh,720px);overflow:auto;overscroll-behavior:contain}.th-panel:not([open]){width:max-content;max-width:100%;margin-left:auto;border-radius:999px}.th-panel:not([open])>summary{background:#5b5ce2;color:#fff;border-radius:999px;padding:11px 16px}.th-panel:not([open])>summary span{display:none}.th-panel:not([open])~.th-status-panel{display:none}
+      .th-panel,.th-status-panel{pointer-events:auto;background:#fff;border:1px solid #e3e6ef;border-radius:18px;box-shadow:0 14px 42px rgba(0,0,0,.22);overflow:hidden;box-sizing:border-box}.th-panel[open]{max-height:min(72dvh,720px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;touch-action:pan-y}.th-panel:not([open]){width:max-content;max-width:100%;margin-left:auto;border-radius:999px}.th-panel:not([open])>summary{background:#5b5ce2;color:#fff;border-radius:999px;padding:11px 16px}.th-panel:not([open])>summary span{display:none}.th-panel:not([open])~.th-status-panel{display:none}
       .th-panel>summary,.th-status-panel>summary,.th-subsection>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;font:800 14px system-ui;color:#161b2c;cursor:pointer}.th-panel>summary::-webkit-details-marker,.th-status-panel>summary::-webkit-details-marker,.th-subsection>summary::-webkit-details-marker{display:none}.th-panel>summary{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(10px)}.th-panel>summary span{font-size:11px;color:#667085;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
       .th-mobile-config{background:#fff;padding:10px 12px 14px;display:grid;grid-template-columns:minmax(0,1fr);gap:9px;box-sizing:border-box;overflow-x:hidden}.th-mobile-config *{box-sizing:border-box;min-width:0}.th-mobile-config label{font:700 11px/1.4 system-ui;color:#667085;display:flex;flex-direction:column;gap:4px}.th-mobile-config select,.th-mobile-config input{display:block;width:100%;max-width:100%;min-width:0;inline-size:100%;max-inline-size:100%;min-inline-size:0;font:700 14px system-ui;padding:10px 11px;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c;overflow:hidden}
       .th-mobile-config input[type="date"],.th-mobile-config input[type="time"]{width:100%!important;max-width:100%!important;min-width:0!important;inline-size:100%!important;max-inline-size:100%!important;min-inline-size:0!important;overflow:hidden}
@@ -2204,9 +2205,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       .th-picker-shell{position:relative;display:flex;align-items:center;justify-content:center;width:100%;max-width:100%;height:46px;min-width:0;overflow:hidden;border:1px solid #e3e6ef;border-radius:11px;background:#fff;color:#161b2c}
       .th-picker-display{display:block;width:100%;max-width:100%;padding:0 38px 0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font:800 14px/46px system-ui;color:#161b2c;pointer-events:none}
       .th-picker-shell:after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);font:900 13px system-ui;color:#667085;pointer-events:none}
-      .th-mobile-config .th-picker-native{position:absolute!important;inset:0!important;display:block!important;width:100%!important;max-width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:11px!important;background:transparent!important;opacity:.001!important;color:transparent!important;-webkit-appearance:none!important;appearance:none!important;z-index:2;cursor:pointer}
+      .th-mobile-config .th-picker-native{position:absolute!important;inset:0!important;display:block!important;width:100%!important;max-width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:11px!important;background:transparent!important;opacity:.001!important;color:transparent!important;-webkit-appearance:none!important;appearance:none!important;z-index:2;cursor:pointer}.th-shell.th-desktop-extension .th-picker-native{pointer-events:none!important}.th-shell.th-desktop-extension .th-picker-shell{cursor:pointer}
       .th-mobile-config .th-check{flex-direction:row;align-items:center;gap:8px}.th-mobile-config .th-check input{width:auto}.th-mobile-config small{font-weight:500;color:#98a2b3}.th-config-actions{display:flex;gap:8px;flex-wrap:wrap}.th-config-actions button,.th-subsection button,.th-inline-add button,.th-scan-button{flex:1;border:1px solid transparent;border-radius:11px;padding:11px 12px;background:#5b5ce2;color:#fff;font-weight:800;font-size:13px}.th-config-actions button.secondary,.th-subsection button.secondary,.th-view-toggle.secondary{background:#fff;color:#4b4cd3;border-color:#cfd0ff}.th-config-actions button:disabled,.th-subsection button:disabled,.th-inline-add button:disabled{background:#f0f2f8!important;color:#98a2b3!important;border-color:#e4e7ec!important;opacity:1}.th-section-title{font:900 12px system-ui;color:#344054;margin-top:5px;padding-top:8px;border-top:1px solid #eef0f5}.th-section-title:first-of-type{border-top:0}.th-scan-button{width:100%;background:#161b2c}.th-scan-button.secondary{background:#5b5ce2}.th-scan-result{font:600 11px/1.4 system-ui;color:#667085;background:#f6f7fb;border-radius:10px;padding:9px 10px}.th-storage-status{font:700 10px/1.3 system-ui;color:#667085;background:#f8f9fc;border:1px solid #eef0f5;border-radius:999px;padding:6px 9px;width:max-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.th-time-grid{display:flex;gap:7px;flex-wrap:wrap}.th-time-chip,.th-hour-chip{border:1px solid #dfe3ee;border-radius:999px;padding:8px 10px;background:#f7f8fb;color:#344054;font:800 12px system-ui}.th-time-chip.selected{background:#ececff;color:#4b4cd3;border-color:#cfd0ff}.th-time-chip b,.th-hour-chip b{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;border-radius:999px;background:#5b5ce2;color:#fff;font-size:10px}.th-inline-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.th-inline-add button{flex:none}.th-theme-preview{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;align-items:center;padding:9px;border:1px solid #eef0f5;border-radius:12px;background:#fbfcfe}.th-theme-preview img,.th-theme-placeholder{width:72px;height:72px;object-fit:cover;border-radius:10px;background:#eef0f5}.th-theme-placeholder{display:grid;place-items:center;font-size:28px}.th-theme-preview div:last-child{display:flex;flex-direction:column;gap:3px;min-width:0}.th-theme-preview strong{font:900 14px system-ui;color:#161b2c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.th-theme-preview span{font:700 11px system-ui;color:#667085}.th-theme-preview small{font:700 10px system-ui;color:#5b5ce2}.th-link-button{border:0;background:transparent;color:#5b5ce2;font:800 12px system-ui;text-align:left;padding:2px}.th-empty{font:600 11px system-ui;color:#98a2b3}.th-warning{font:600 10px/1.45 system-ui;color:#7a5b00;background:#fff8dd;border-radius:10px;padding:9px 10px}.th-subsection{border:1px solid #eef0f5;border-radius:12px;background:#fbfcfe}.th-subsection>summary{font-size:12px;padding:10px 11px}.th-subsection-body{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:0 10px 10px;min-width:0;max-width:100%;overflow:hidden}.th-subsection-body>label{min-width:0;max-width:100%}.th-divider{height:1px;background:#eef0f5;margin:2px 0}.th-status-panel{margin-top:7px}.th-status-panel>summary{gap:10px}.th-status-summary{min-width:0;max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font:700 10px/1.3 system-ui;color:#667085}.th-status-content{max-height:34vh;overflow:auto}.th-top-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.th-view-toggle{flex:none!important;white-space:nowrap}.th-compact-summary{font:800 11px/1.35 system-ui;color:#344054;background:#f6f7fb;border-radius:10px;padding:9px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.th-help{font:600 10px/1.45 system-ui;color:#667085;background:#f6f7fb;border-radius:9px;padding:8px 9px}.th-sync-status{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f6f7fb;border-radius:9px;padding:8px 9px;font:700 10px/1.35 system-ui;color:#667085}.th-sync-status strong{color:#344054}.th-sync-status span{white-space:nowrap}
-    </style><div class="th-shell">${createMobileConfigMarkup(profiles,state,viewState,localUser,syncConfig)}<details class="th-status-panel"><summary><span>상태 / 상세</span><small class="th-status-summary">${esc((viewState.mode==='practice'?'연습':viewState.mode==='confirm'?'확정':'실전')+' · '+(viewState.statusText||'대기')+' · 오픈 '+(viewState.openingText||'확인 필요'))}</small></summary><div class="th-status-content">${deps.createAppMarkup?deps.createAppMarkup(viewState):''}</div></details></div>`;
+    </style><div class="th-shell${isDesktopExtension?' th-desktop-extension':''}">${createMobileConfigMarkup(profiles,state,viewState,localUser,syncConfig)}<details class="th-status-panel"><summary><span>상태 / 상세</span><small class="th-status-summary">${esc((viewState.mode==='practice'?'연습':viewState.mode==='confirm'?'확정':'실전')+' · '+(viewState.statusText||'대기')+' · 오픈 '+(viewState.openingText||'확인 필요'))}</small></summary><div class="th-status-content">${deps.createAppMarkup?deps.createAppMarkup(viewState):''}</div></details></div>`;
     rootNode.querySelector('[data-action="prepare"]')?.addEventListener('click',()=>onPrepare?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="practice-now"]')?.addEventListener('click',()=>onPracticeNow?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="timing-test"]')?.addEventListener('click',()=>onTimingTest?.(readConfig(rootNode)));
@@ -2240,17 +2241,34 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       el.addEventListener('input',()=>syncPickerDisplay(el));
       el.addEventListener('change',()=>syncPickerDisplay(el));
     }
-    for(const shell of rootNode.querySelectorAll?.('.th-picker-shell')||[]){
-      shell.addEventListener('click',(event)=>{
-        const el=shell.querySelector?.('.th-picker-native');
-        if(!el)return;
-        if(typeof el.showPicker==='function'){try{el.showPicker();return;}catch{}}
-        if(event.target!==el){
+    if(isDesktopExtension){
+      for(const shell of rootNode.querySelectorAll?.('.th-picker-shell')||[]){
+        shell.addEventListener('pointerdown',(event)=>{
+          const el=shell.querySelector?.('.th-picker-native');
+          if(!el)return;
+          event.preventDefault();
+          event.stopPropagation();
+          if(typeof el.showPicker==='function'){try{el.showPicker();return;}catch{}}
           try{el.focus({preventScroll:true});}catch{try{el.focus()}catch{}}
           try{el.click();}catch{}
-        }
-      });
+        });
+      }
     }
+    const wheelScroll=(target,event)=>{
+      if(!target)return;
+      const max=Math.max(0,Number(target.scrollHeight||0)-Number(target.clientHeight||0));
+      const delta=Number(event.deltaY||0);
+      if(max<=0||!delta)return;
+      target.scrollTop=Math.max(0,Math.min(max,Number(target.scrollTop||0)+delta));
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const mainPanel=rootNode.querySelector?.('.th-panel');
+    mainPanel?.addEventListener('wheel',(event)=>{
+      if(mainPanel.open)wheelScroll(mainPanel,event);
+    },{passive:false,capture:true});
+    const statusContent=rootNode.querySelector?.('.th-status-content');
+    statusContent?.addEventListener('wheel',(event)=>wheelScroll(statusContent,event),{passive:false,capture:true});
     for(const el of rootNode.querySelectorAll?.('[data-field]')||[]){
       const field=String(el.dataset?.field||'');
       if(field.startsWith('new-')||field==='hour-to-add') continue;
@@ -2566,7 +2584,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.17');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.18');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.syncStatusText=syncStatusText;
       viewState.syncLastAt=Number(syncState.lastSyncAt||0);
@@ -2686,7 +2704,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.17');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.18');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
