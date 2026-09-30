@@ -6,7 +6,7 @@ const SYNC_STATE_KEY='ticket-helper:sync-state';
 const UPDATE_STATE_KEY='ticket-helper:extension-update-state';
 
 function isSupported(url=''){
-  return /^https:\/\/(?:www\.)?keyescape\.com\//i.test(url)||/^https:\/\/(?:m\.)?booking\.naver\.com\//i.test(url);
+  try{const parsed=new URL(url);return parsed.protocol==='https:'&&["keyescape.com", "www.keyescape.com", "booking.naver.com", "m.booking.naver.com", "rabbitholeescape.co.kr", "www.rabbitholeescape.co.kr", "play33.kr", "www.play33.kr", "xn--2e0b040a4xj.com", "www.xn--2e0b040a4xj.com", "zeroworldkorea.com", "www.zeroworldkorea.com", "doomescape.com", "www.doomescape.com", "nextedition.co.kr", "www.nextedition.co.kr", "page-today.co.kr", "www.page-today.co.kr", "nabijam.com", "www.nabijam.com", "m.place.naver.com"].includes(parsed.hostname);}catch{return false;}
 }
 
 async function activeTab(){const tabs=await chrome.tabs.query({active:true,currentWindow:true});return tabs[0]||null;}

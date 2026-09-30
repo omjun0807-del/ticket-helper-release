@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Ticket Helper PC",
-  "version": "0.1.19",
-  "description": "Ticket Helper for Keyescape and Naver Booking on Chrome and Edge.",
+  "version": "0.1.20",
+  "description": "Escape-room booking helper with branch/theme catalog and manual confirmation.",
   "permissions": [
     "storage",
     "activeTab",
@@ -15,7 +15,24 @@
     "https://m.booking.naver.com/*",
     "https://booking.naver.com/*",
     "https://api.github.com/*",
-    "https://raw.githubusercontent.com/*"
+    "https://raw.githubusercontent.com/*",
+    "https://rabbitholeescape.co.kr/*",
+    "https://www.rabbitholeescape.co.kr/*",
+    "https://play33.kr/*",
+    "https://www.play33.kr/*",
+    "https://xn--2e0b040a4xj.com/*",
+    "https://www.xn--2e0b040a4xj.com/*",
+    "https://zeroworldkorea.com/*",
+    "https://www.zeroworldkorea.com/*",
+    "https://doomescape.com/*",
+    "https://www.doomescape.com/*",
+    "https://nextedition.co.kr/*",
+    "https://www.nextedition.co.kr/*",
+    "https://page-today.co.kr/*",
+    "https://www.page-today.co.kr/*",
+    "https://nabijam.com/*",
+    "https://www.nabijam.com/*",
+    "https://m.place.naver.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js"
@@ -30,7 +47,24 @@
         "https://keyescape.com/*",
         "https://www.keyescape.com/*",
         "https://m.booking.naver.com/*",
-        "https://booking.naver.com/*"
+        "https://booking.naver.com/*",
+        "https://rabbitholeescape.co.kr/*",
+        "https://www.rabbitholeescape.co.kr/*",
+        "https://play33.kr/*",
+        "https://www.play33.kr/*",
+        "https://xn--2e0b040a4xj.com/*",
+        "https://www.xn--2e0b040a4xj.com/*",
+        "https://zeroworldkorea.com/*",
+        "https://www.zeroworldkorea.com/*",
+        "https://doomescape.com/*",
+        "https://www.doomescape.com/*",
+        "https://nextedition.co.kr/*",
+        "https://www.nextedition.co.kr/*",
+        "https://page-today.co.kr/*",
+        "https://www.page-today.co.kr/*",
+        "https://nabijam.com/*",
+        "https://www.nabijam.com/*",
+        "https://m.place.naver.com/*"
       ],
       "js": [
         "bridge-core.js",

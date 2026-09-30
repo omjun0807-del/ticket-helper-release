@@ -1,8 +1,8 @@
 # Ticket Helper PC 개인정보처리방침
 
-최종 업데이트: 2026-09-30
+최종 업데이트: 2026-10-01
 
-Ticket Helper PC는 키이스케이프 및 네이버 예약 페이지에서 사용자가 직접 예약 준비와 입력을 보조할 수 있도록 만든 개인용 브라우저 확장 프로그램입니다.
+Ticket Helper PC는 키이스케이프·네이버 예약 및 아래에 명시된 방탈출 예약 페이지에서 사용자가 직접 예약 준비와 입력을 보조할 수 있도록 만든 개인용 브라우저 확장 프로그램입니다.
 
 ## 처리하는 정보
 
@@ -20,6 +20,15 @@ GitHub 토큰은 사용자의 브라우저 로컬 저장소에만 저장되며, 
 
 - keyescape.com
 - booking.naver.com
+- m.place.naver.com
+- rabbitholeescape.co.kr
+- play33.kr
+- xn--2e0b040a4xj.com (지구별)
+- zeroworldkorea.com
+- doomescape.com
+- nextedition.co.kr
+- page-today.co.kr
+- nabijam.com
 
 확장 프로그램은 현재 예약 페이지의 지점, 테마, 날짜 및 회차 정보를 읽어 사용자에게 표시하고 예약 보조 기능을 수행합니다. 이 정보는 광고, 프로파일링 또는 분석 목적으로 사용하지 않습니다.
 
@@ -47,9 +56,9 @@ Ticket Helper PC에는 광고 SDK, 사용자 행동 분석 SDK 또는 외부 추
 
 # Ticket Helper PC Privacy Policy
 
-Last updated: 2026-09-30
+Last updated: 2026-10-01
 
-Ticket Helper PC is a personal browser extension that assists users with preparing and entering reservation information on Keyescape and Naver Booking.
+Ticket Helper PC is a personal browser extension that assists users with preparing and entering reservation information on Keyescape, Naver Booking and the escape-room reservation sites listed above. Some sites support only catalog browsing and official booking links.
 
 Reservation name, phone number, payment limit, and execution mode are stored only in the browser's local extension storage and are not sent to a developer-operated server.
 
