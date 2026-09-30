@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.28
+// @version      0.1.29
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -18,7 +18,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.28";
+globalThis.TICKET_HELPER_VERSION="0.1.29";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -490,7 +490,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         return value;
       };
       const normalizePath=path=>{const value=String(path||'/').replace(/\/+$/,'');return value||'/';};
-      const query=url=>JSON.stringify([...url.searchParams.entries()].sort((x,y)=>x[0]===y[0]?String(x[1]).localeCompare(String(y[1])):String(x[0]).localeCompare(String(y[0]))));
+      const query=url=>JSON.stringify([...url.searchParams.entries()].filter(([key])=>key!=='_th_reset').sort((x,y)=>x[0]===y[0]?String(x[1]).localeCompare(String(y[1])):String(x[0]).localeCompare(String(y[0]))));
       return normalizeHost(left.hostname)===normalizeHost(right.hostname)&&normalizePath(left.pathname)===normalizePath(right.pathname)&&query(left)===query(right);
     }catch{return String(a||'')===String(b||'');}
   }
@@ -2792,7 +2792,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId?'정상':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.28');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.29');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -2917,7 +2917,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.28');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.29');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
