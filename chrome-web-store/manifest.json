@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ticket Helper PC",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Personal reservation helper for Keyescape and Naver Booking.",
   "permissions": [
     "storage",
