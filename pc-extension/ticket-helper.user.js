@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.41
+// @version      0.1.43
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -35,7 +35,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.41";
+globalThis.TICKET_HELPER_VERSION="0.1.43";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -2425,42 +2425,49 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const syncStatus=String(viewState.syncStatusText||'연결 안 됨');
     const syncLast=viewState.syncLastAt?formatBackupAt(viewState.syncLastAt):'아직 동기화 없음';
     const syncRepo=String(syncConfig.repoFullName||'omjun0807-del/ticket-helper-private');
-    return `<details class="th-panel"${open}><summary><strong>Ticket Helper</strong><span>${esc(selected?.themeName||'탭해서 설정')}</span></summary><div class="th-mobile-config">
+    return `<details class="th-panel" data-compact="${compact}"${open}><summary><strong>Ticket Helper</strong><span>${esc(selected?.themeName||'탭해서 설정')}</span></summary><div class="th-mobile-config">
       <div class="th-top-actions"><button type="button" class="th-scan-button" data-action="scan-current">⌖ 현재 페이지 인식</button><button type="button" class="secondary th-view-toggle" data-action="toggle-compact">${compact?'상세 보기':'간단 보기'}</button></div>
       ${compact?`<div class="th-compact-summary">${esc(compactSummary)}</div>`:`<div class="th-scan-result">${esc(scanText)}</div>`}${themePreview}
       ${selected?.openingHint?`<small>${esc(selected.openingHint.note||'오픈 규칙 확인 필요')}${selected.openingHint.openTime?` · 참고 시각 ${esc(selected.openingHint.openTime)}`:''}</small>`:''}
       ${safeImageUrl(selected?.openingRuleSourceUrl||selected?.openingHint?.sources?.[0]||'')?`<a href="${esc(safeImageUrl(selected.openingRuleSourceUrl||selected.openingHint.sources?.[0]))}" target="_blank" rel="noopener noreferrer">오픈 안내 출처 · ${selected.openingRuleStatus==='verified'?'공식 확인':selected.openingRuleStatus==='configured'?'사용자 설정':'재확인 필요'}</a>`:''}
       <div class="th-storage-status">저장 · ${esc(storageKindLabel(viewState.storageKind))} · 테마 ${Number(viewState.savedThemeCount||profiles.length)}개</div>
 
-      <div class="th-section-title">저장된 예약 목록</div>
+      <div class="th-section-title">예약 테마</div>
       <label>사이트<select data-field="site">${siteOptions}</select></label>
       <label>지점<select data-field="branch">${branchOptions}</select></label>
       <label>테마<select data-field="profile">${themeOptions}</select></label>
       ${selected?`<div class="th-help">${selected.adapterId==='manual'?'목록·예약 링크 지원 · 자동 예약 미지원':selected.automationStatus==='practice-supported'?'선택·입력 연습 지원 · 실기기 확인 필요':''}${!selected.openingRule?' · 오픈 규칙 확인 필요':''}</div><a class="th-link-button" href="${esc(selected.themeBookingUrl||selected.bookingUrl||'')}">공식 예약 페이지 열기</a>`:''}
       ${pickerFieldMarkup({label:'목표 날짜',field:'target-date',type:'date',value:state.targetDate||''})}
       <button type="button" class="th-scan-button secondary" data-action="scan-target-date">목표일 회차 미리보기 (선택)</button>
-      <div class="th-help">오픈 전 날짜가 비활성화되어 미리보기가 안 돼도 실전 실행에는 영향 없습니다. 저장된 회차 우선순위를 사용하고, 오픈 시각에 실제 회차를 새로 읽습니다.</div>
 
       <div class="th-section-title">실제 회차 우선순위 <small>원하는 순서대로 탭</small></div>
       <div class="th-time-grid">${sessionButtons}</div>
       ${times.length?'<button type="button" class="th-link-button" data-action="clear-session-priority">회차 우선순위 초기화</button>':''}
 
-      <div class="th-section-title">보조 시간대 <small>회차가 바뀔 때 사용</small></div>
+      <details class="th-subsection" data-ui-section="hours"${compact?'':' open'}><summary>보조 시간대 · ${esc((selected?.timePriorities||[]).map(p=>p.hour+'시').join(' → ')||'선택 안 함')}</summary><div class="th-subsection-body">
+      <div class="th-help">실제 회차 우선순위 다음으로 사용할 시간대를 선택합니다.</div>
       <div class="th-time-grid">${hourButtons}</div>
       <div class="th-inline-add"><select data-field="hour-to-add">${hourOptions}</select><button type="button" data-action="add-hour" disabled>시간대 추가</button></div>
+      </div></details>
 
-      <div class="th-help" role="status" aria-live="polite"><strong>예약 준비</strong><div data-preparation-summary></div><div data-opening-countdown></div></div>
-      <div class="th-section-title">실행</div>
-      <label>모드<select data-field="mode"><option value="practice"${state.mode==='practice'||!state.mode?' selected':''}>연습 · 확정 안 함</option><option value="live"${state.mode==='live'?' selected':''}>실전 · 예약확정 / 결제 직전</option><option value="confirm"${state.mode==='confirm'?' selected':''}>예약 확정까지 · 최종 결제 클릭</option></select></label>
-      <label class="th-check"><input data-field="captcha-auto-resume" type="checkbox"${state.captchaAutoResume!==false?' checked':''}> CAPTCHA 직접 완료 후 자동 계속</label>
-      <label class="th-check"><input data-field="fallback" type="checkbox"${state.fallbackEnabled!==false?' checked':''}> 실패 시 다음 테마</label>
-      <div class="th-warning">※ ‘예약 확정까지’는 네이버 최종 결제 버튼까지 누릅니다. 생체인증/추가인증은 직접 진행합니다.</div>
+      <div class="th-section-title">예약자 정보</div>
       <label>참여 인원<select data-field="local-participants"><option value="">직접 선택</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}"${Number(localUser.participants)===i+1?' selected':''}>${i+1}명</option>`).join('')}</select></label>
       <label>예약자 이름<input data-field="local-name" autocomplete="name" value="${esc(localUser.name||'')}"></label>
       <label>연락처<input data-field="local-phone" inputmode="tel" autocomplete="tel" value="${esc(localUser.phone||'')}" placeholder="01012345678"></label>
+      <div class="th-help" role="status" aria-live="polite"><strong>예약 준비</strong><div data-preparation-summary></div><div data-opening-countdown></div></div>
+      <div class="th-section-title">실행</div>
+      <label>모드<select data-field="mode"><option value="practice"${state.mode==='practice'||!state.mode?' selected':''}>연습 · 확정 안 함</option><option value="live"${state.mode==='live'?' selected':''}>실전 · 예약확정 / 결제 직전</option><option value="confirm"${state.mode==='confirm'?' selected':''}>예약 확정까지 · 최종 결제 클릭</option></select></label>
+      <div class="th-warning">※ ‘예약 확정까지’는 네이버 최종 결제 버튼까지 누릅니다. 생체인증/추가인증은 직접 진행합니다.</div>
       <div class="th-config-actions"><button type="button" data-action="prepare"${selected?'':' disabled'}>티켓팅 준비</button><button type="button" data-action="stop" class="secondary">중지</button></div>
+      <details class="th-subsection" data-ui-section="options"${compact?'':' open'}><summary>실행 옵션</summary><div class="th-subsection-body">
+      <label class="th-check"><input data-field="captcha-auto-resume" type="checkbox"${state.captchaAutoResume!==false?' checked':''}> CAPTCHA 직접 완료 후 자동 계속</label>
+      <label class="th-check"><input data-field="fallback" type="checkbox"${state.fallbackEnabled!==false?' checked':''}> 실패 시 다음 테마</label>
+      </div></details>
+      <details class="th-subsection" data-ui-section="practice"${compact?'':' open'}><summary>연습·도움말</summary><div class="th-subsection-body">
+      <div class="th-help">오픈 전 날짜가 비활성화되어 미리보기가 안 돼도 실전 실행에는 영향 없습니다. 저장된 회차 우선순위를 사용하고, 오픈 시각에 실제 회차를 새로 읽습니다.</div>
       <div class="th-config-actions"><button type="button" data-action="practice-now" class="secondary"${selected&&selected.adapterId!=='manual'?'':' disabled'}>즉시 연습 테스트</button><button type="button" data-action="timing-test" class="secondary"${selected&&selected.adapterId!=='manual'?'':' disabled'}>10초 동작 테스트</button></div>
       <div class="th-warning">10초 동작 테스트는 현재 불러온 예약 가능 회차에서 타이머 → 회차 선택 → NEXT 흐름을 확인합니다. 미래 날짜의 실제 활성화 여부는 서버가 정하므로 실전 오픈 시각에만 검증됩니다.</div>
+      </div></details>
 
       <details class="th-subsection"><summary>현재 페이지 새로 등록</summary><div class="th-subsection-body">
         <div class="th-help">현재 열려 있는 예약 페이지를 새 항목으로 저장합니다. 같은 테마가 이미 있으면 덮어쓰기 전에 확인합니다.</div>
@@ -2551,6 +2558,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     return {
       panelScrollTop:Number(panel?.scrollTop||0),
       panelOpen:panel?!!panel.open:undefined,
+      compactView:panel?.dataset?.compact,
+      sectionOpen:[...rootNode?.querySelectorAll?.('[data-ui-section]')||[]].map(el=>({id:el.dataset.uiSection,open:!!el.open})),
       statusScrollTop:Number(status?.scrollTop||0),
       activeField,
       selectionStart:Number.isInteger(active?.selectionStart)?active.selectionStart:null,
@@ -2561,6 +2570,12 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const apply=()=>{
       const panel=rootNode?.querySelector?.('.th-panel'); const status=rootNode?.querySelector?.('.th-status-content');
       if(panel){if(typeof state.panelOpen==='boolean')panel.open=state.panelOpen;panel.scrollTop=Number(state.panelScrollTop||0);}
+      if(panel?.dataset?.compact===state.compactView){
+        for(const section of state.sectionOpen||[]){
+          const el=[...rootNode.querySelectorAll?.('[data-ui-section]')||[]].find(node=>node.dataset.uiSection===section.id);
+          if(el)el.open=section.open;
+        }
+      }
       if(status)status.scrollTop=Number(state.statusScrollTop||0);
     };
     apply();
@@ -3105,7 +3120,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.41');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.43');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -3253,7 +3268,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.41');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.43');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);

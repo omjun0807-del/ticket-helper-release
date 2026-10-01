@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.44
+// @version      0.1.43
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -35,7 +35,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.44";
+globalThis.TICKET_HELPER_VERSION="0.1.43";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -2427,20 +2427,16 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const syncRepo=String(syncConfig.repoFullName||'omjun0807-del/ticket-helper-private');
     return `<details class="th-panel" data-compact="${compact}"${open}><summary><strong>Ticket Helper</strong><span>${esc(selected?.themeName||'탭해서 설정')}</span></summary><div class="th-mobile-config">
       <div class="th-top-actions"><button type="button" class="th-scan-button" data-action="scan-current">⌖ 현재 페이지 인식</button><button type="button" class="secondary th-view-toggle" data-action="toggle-compact">${compact?'상세 보기':'간단 보기'}</button></div>
-      <section class="th-card th-theme-card" aria-label="예약 테마"><div class="th-card-heading"><span class="th-step">01</span><strong>예약 테마</strong></div>
-      ${compact?`<div class="th-compact-summary">${esc(compactSummary)}</div>`:`<div class="th-scan-result">${esc(scanText)}</div>`}
+      ${compact?`<div class="th-compact-summary">${esc(compactSummary)}</div>`:`<div class="th-scan-result">${esc(scanText)}</div>`}${themePreview}
       ${selected?.openingHint?`<small>${esc(selected.openingHint.note||'오픈 규칙 확인 필요')}${selected.openingHint.openTime?` · 참고 시각 ${esc(selected.openingHint.openTime)}`:''}</small>`:''}
       ${safeImageUrl(selected?.openingRuleSourceUrl||selected?.openingHint?.sources?.[0]||'')?`<a href="${esc(safeImageUrl(selected.openingRuleSourceUrl||selected.openingHint.sources?.[0]))}" target="_blank" rel="noopener noreferrer">오픈 안내 출처 · ${selected.openingRuleStatus==='verified'?'공식 확인':selected.openingRuleStatus==='configured'?'사용자 설정':'재확인 필요'}</a>`:''}
       <div class="th-storage-status">저장 · ${esc(storageKindLabel(viewState.storageKind))} · 테마 ${Number(viewState.savedThemeCount||profiles.length)}개</div>
 
-
+      <div class="th-section-title">예약 테마</div>
       <label>사이트<select data-field="site">${siteOptions}</select></label>
       <label>지점<select data-field="branch">${branchOptions}</select></label>
       <label>테마<select data-field="profile">${themeOptions}</select></label>
-      ${themePreview}
       ${selected?`<div class="th-help">${selected.adapterId==='manual'?'목록·예약 링크 지원 · 자동 예약 미지원':selected.automationStatus==='practice-supported'?'선택·입력 연습 지원 · 실기기 확인 필요':''}${!selected.openingRule?' · 오픈 규칙 확인 필요':''}</div><a class="th-link-button" href="${esc(selected.themeBookingUrl||selected.bookingUrl||'')}">공식 예약 페이지 열기</a>`:''}
-      </section>
-      <section class="th-card" aria-label="예약 설정"><div class="th-card-heading"><span class="th-step">02</span><strong>예약 설정</strong></div>
       ${pickerFieldMarkup({label:'목표 날짜',field:'target-date',type:'date',value:state.targetDate||''})}
       <button type="button" class="th-scan-button secondary" data-action="scan-target-date">목표일 회차 미리보기 (선택)</button>
 
@@ -2448,26 +2444,21 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       <div class="th-time-grid">${sessionButtons}</div>
       ${times.length?'<button type="button" class="th-link-button" data-action="clear-session-priority">회차 우선순위 초기화</button>':''}
 
-      <div class="th-section-title">예약자 정보</div>
-      <label>참여 인원<select data-field="local-participants"><option value="">직접 선택</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}"${Number(localUser.participants)===i+1?' selected':''}>${i+1}명</option>`).join('')}</select></label>
-      <label>예약자 이름<input data-field="local-name" autocomplete="name" value="${esc(localUser.name||'')}"></label>
-      <label>연락처<input data-field="local-phone" inputmode="tel" autocomplete="tel" value="${esc(localUser.phone||'')}" placeholder="01012345678"></label>
-      </section>
-      <section class="th-card th-execution-card" aria-label="실행"><div class="th-card-heading"><span class="th-step">03</span><strong>실행</strong><span class="th-mode-badge">${state.mode==='confirm'?'예약 확정':state.mode==='live'?'실전':'연습'}</span></div>
-      <div class="th-open-display"><span>예약 오픈</span><strong>${esc(viewState.openingText||'규칙·날짜 설정 필요')}</strong></div>
-      <div class="th-help th-readiness" role="status" aria-live="polite"><strong>예약 준비</strong><div data-preparation-summary></div><div data-opening-countdown></div></div>
-      <div class="th-run-state"><span class="th-state-dot" aria-hidden="true"></span><span>현재 상태 · ${esc(viewState.statusText||'대기')}</span></div>
-      <label>모드<select data-field="mode"><option value="practice"${state.mode==='practice'||!state.mode?' selected':''}>연습 · 확정 안 함</option><option value="live"${state.mode==='live'?' selected':''}>실전 · 예약확정 / 결제 직전</option><option value="confirm"${state.mode==='confirm'?' selected':''}>예약 확정까지 · 최종 결제 클릭</option></select></label>
-      <div class="th-warning">※ ‘예약 확정까지’는 네이버 최종 결제 버튼까지 누릅니다. 생체인증/추가인증은 직접 진행합니다.</div>
-      <div class="th-config-actions"><button type="button" data-action="prepare"${selected?'':' disabled'}>티켓팅 준비</button><button type="button" data-action="stop" class="secondary">중지</button></div>
-      </section>
-      <details class="th-subsection th-more-settings" data-ui-section="more"${compact?'':' open'}><summary>추가 설정</summary><div class="th-subsection-body">
       <details class="th-subsection" data-ui-section="hours"${compact?'':' open'}><summary>보조 시간대 · ${esc((selected?.timePriorities||[]).map(p=>p.hour+'시').join(' → ')||'선택 안 함')}</summary><div class="th-subsection-body">
       <div class="th-help">실제 회차 우선순위 다음으로 사용할 시간대를 선택합니다.</div>
       <div class="th-time-grid">${hourButtons}</div>
       <div class="th-inline-add"><select data-field="hour-to-add">${hourOptions}</select><button type="button" data-action="add-hour" disabled>시간대 추가</button></div>
       </div></details>
 
+      <div class="th-section-title">예약자 정보</div>
+      <label>참여 인원<select data-field="local-participants"><option value="">직접 선택</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}"${Number(localUser.participants)===i+1?' selected':''}>${i+1}명</option>`).join('')}</select></label>
+      <label>예약자 이름<input data-field="local-name" autocomplete="name" value="${esc(localUser.name||'')}"></label>
+      <label>연락처<input data-field="local-phone" inputmode="tel" autocomplete="tel" value="${esc(localUser.phone||'')}" placeholder="01012345678"></label>
+      <div class="th-help" role="status" aria-live="polite"><strong>예약 준비</strong><div data-preparation-summary></div><div data-opening-countdown></div></div>
+      <div class="th-section-title">실행</div>
+      <label>모드<select data-field="mode"><option value="practice"${state.mode==='practice'||!state.mode?' selected':''}>연습 · 확정 안 함</option><option value="live"${state.mode==='live'?' selected':''}>실전 · 예약확정 / 결제 직전</option><option value="confirm"${state.mode==='confirm'?' selected':''}>예약 확정까지 · 최종 결제 클릭</option></select></label>
+      <div class="th-warning">※ ‘예약 확정까지’는 네이버 최종 결제 버튼까지 누릅니다. 생체인증/추가인증은 직접 진행합니다.</div>
+      <div class="th-config-actions"><button type="button" data-action="prepare"${selected?'':' disabled'}>티켓팅 준비</button><button type="button" data-action="stop" class="secondary">중지</button></div>
       <details class="th-subsection" data-ui-section="options"${compact?'':' open'}><summary>실행 옵션</summary><div class="th-subsection-body">
       <label class="th-check"><input data-field="captcha-auto-resume" type="checkbox"${state.captchaAutoResume!==false?' checked':''}> CAPTCHA 직접 완료 후 자동 계속</label>
       <label class="th-check"><input data-field="fallback" type="checkbox"${state.fallbackEnabled!==false?' checked':''}> 실패 시 다음 테마</label>
@@ -2503,7 +2494,6 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       </div></details>
       <details class="th-subsection"><summary>${viewState.extensionVersion?`PC 확장판 · v${esc(viewState.extensionVersion)}`:viewState.desktopUserscript?`PC Userscript · v${esc(viewState.installedVersion||'?')}`:`업데이트 · v${esc(viewState.installedVersion||'?')}`}</summary><div class="th-subsection-body">${viewState.extensionVersion?'<div class="th-warning">Chrome/Edge 네이티브 확장판입니다. 새 확장 버전은 브라우저 확장 업데이트 또는 새 PC 확장 패키지로 적용합니다.</div>':viewState.desktopUserscript?'<div class="th-warning">PC에서는 Tampermonkey가 @updateURL / @downloadURL / @version을 기준으로 새 버전을 확인합니다. 확장 프로그램의 업데이트 확인 설정을 켜 주세요. 별도 ZIP 교체나 chrome://extensions 새로고침이 필요 없습니다.</div>':'<div class="th-warning">새 버전 확인 후 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.</div><button type="button" data-action="check-update" class="secondary">새 버전 확인</button>'}</div></details>
       <details class="th-subsection"><summary>백업 / 복구</summary><div class="th-subsection-body"><div class="th-warning"><strong>${esc(backupLabel)}</strong><br>테마·회차·설정을 변경하기 전 자동 백업을 1개 유지합니다. 이름/연락처는 백업에 포함하지 않습니다.</div><div class="th-config-actions"><button type="button" data-action="restore-auto-backup" class="secondary"${viewState.backupAt?'':' disabled'}>자동백업 복구</button><button type="button" data-action="import-profiles" class="secondary">가져오기</button><button type="button" data-action="export-profiles" class="secondary">내보내기</button></div></div></details>
-      </div></details>
     </div></details>`;
   }
 
@@ -2637,46 +2627,6 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       .th-picker-shell:after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);font:900 13px system-ui;color:#667085;pointer-events:none}
       .th-mobile-config .th-picker-native{position:absolute!important;inset:0!important;display:block!important;width:100%!important;max-width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:11px!important;background:transparent!important;opacity:.001!important;color:transparent!important;-webkit-appearance:none!important;appearance:none!important;z-index:2;cursor:pointer}.th-shell.th-desktop-runtime .th-picker-native{pointer-events:none!important}.th-shell.th-desktop-runtime .th-picker-shell{cursor:pointer}
       .th-mobile-config .th-check{flex-direction:row;align-items:center;gap:8px}.th-mobile-config .th-check input{width:auto}.th-mobile-config small{font-weight:500;color:#98a2b3}.th-config-actions{display:flex;gap:8px;flex-wrap:wrap}.th-config-actions button,.th-subsection button,.th-inline-add button,.th-scan-button{flex:1;border:1px solid transparent;border-radius:11px;padding:11px 12px;background:#5b5ce2;color:#fff;font-weight:800;font-size:13px}.th-config-actions button.secondary,.th-subsection button.secondary,.th-view-toggle.secondary{background:#fff;color:#4b4cd3;border-color:#cfd0ff}.th-config-actions button:disabled,.th-subsection button:disabled,.th-inline-add button:disabled{background:#f0f2f8!important;color:#98a2b3!important;border-color:#e4e7ec!important;opacity:1}.th-section-title{font:900 12px system-ui;color:#344054;margin-top:5px;padding-top:8px;border-top:1px solid #eef0f5}.th-section-title:first-of-type{border-top:0}.th-scan-button{width:100%;background:#161b2c}.th-scan-button.secondary{background:#5b5ce2}.th-scan-result{font:600 11px/1.4 system-ui;color:#667085;background:#f6f7fb;border-radius:10px;padding:9px 10px}.th-storage-status{font:700 10px/1.3 system-ui;color:#667085;background:#f8f9fc;border:1px solid #eef0f5;border-radius:999px;padding:6px 9px;width:max-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.th-time-grid{display:flex;gap:7px;flex-wrap:wrap}.th-time-chip,.th-hour-chip{border:1px solid #dfe3ee;border-radius:999px;padding:8px 10px;background:#f7f8fb;color:#344054;font:800 12px system-ui}.th-time-chip.selected{background:#ececff;color:#4b4cd3;border-color:#cfd0ff}.th-time-chip b,.th-hour-chip b{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;border-radius:999px;background:#5b5ce2;color:#fff;font-size:10px}.th-inline-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.th-inline-add button{flex:none}.th-theme-preview{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;align-items:center;padding:9px;border:1px solid #eef0f5;border-radius:12px;background:#fbfcfe}.th-theme-preview img,.th-theme-placeholder{width:72px;height:72px;object-fit:cover;border-radius:10px;background:#eef0f5}.th-theme-placeholder{display:grid;place-items:center;font-size:28px}.th-theme-preview div:last-child{display:flex;flex-direction:column;gap:3px;min-width:0}.th-theme-preview strong{font:900 14px system-ui;color:#161b2c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.th-theme-preview span{font:700 11px system-ui;color:#667085}.th-theme-preview small{font:700 10px system-ui;color:#5b5ce2}.th-link-button{border:0;background:transparent;color:#5b5ce2;font:800 12px system-ui;text-align:left;padding:2px}.th-empty{font:600 11px system-ui;color:#98a2b3}.th-warning{font:600 10px/1.45 system-ui;color:#7a5b00;background:#fff8dd;border-radius:10px;padding:9px 10px}.th-subsection{border:1px solid #eef0f5;border-radius:12px;background:#fbfcfe}.th-subsection>summary{font-size:12px;padding:10px 11px}.th-subsection-body{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:0 10px 10px;min-width:0;max-width:100%;overflow:hidden}.th-subsection-body>label{min-width:0;max-width:100%}.th-divider{height:1px;background:#eef0f5;margin:2px 0}.th-status-panel{margin-top:7px}.th-status-panel>summary{gap:10px}.th-status-summary{min-width:0;max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font:700 10px/1.3 system-ui;color:#667085}.th-status-content{max-height:34vh;overflow:auto}.th-top-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.th-view-toggle{flex:none!important;white-space:nowrap}.th-compact-summary{font:800 11px/1.35 system-ui;color:#344054;background:#f6f7fb;border-radius:10px;padding:9px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.th-help{font:600 10px/1.45 system-ui;color:#667085;background:#f6f7fb;border-radius:9px;padding:8px 9px}.th-sync-status{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f6f7fb;border-radius:9px;padding:8px 9px;font:700 10px/1.35 system-ui;color:#667085}.th-sync-status strong{color:#344054}.th-sync-status span{white-space:nowrap}
-
-      /* Escape UI cards: keep native pickers, action hooks and storage unchanged. */
-      .th-panel{border-radius:22px;border-color:#d9ddec;box-shadow:0 16px 48px rgba(22,27,44,.2)}
-      .th-panel[open]{max-height:min(80dvh,820px)}
-      .th-panel>summary{min-height:52px;padding:14px 16px;border-bottom:1px solid #e8eaf3;background:#fff}
-      .th-panel>summary strong{font-size:16px;letter-spacing:-.3px}.th-panel>summary span{font-size:12px}
-      .th-mobile-config{background:#f3f4fa;padding:12px;gap:12px}
-      .th-card{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;padding:14px;background:#fff;border:1px solid #e3e6f0;border-radius:16px;min-width:0}
-      .th-card-heading{display:flex;align-items:center;gap:8px;color:#20263b;font-size:15px;font-weight:800;min-height:26px}
-      .th-step{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;background:#efedff;color:#5746bd;font-size:11px;font-weight:800}
-      .th-mobile-config label{font-size:13px;line-height:1.5;color:#41495f;gap:6px}
-      .th-mobile-config select,.th-mobile-config input:not([type=checkbox]):not([type=hidden]){font-size:16px;min-height:44px;border:1px solid #d7ddeb;border-radius:11px;background:#fff;color:#20263b;padding:10px 11px;max-width:100%}
-      .th-mobile-config button{min-height:44px;border-radius:11px;font-size:13px;font-weight:750}
-      .th-top-actions{grid-template-columns:minmax(0,1fr) auto;gap:8px}.th-scan-button{background:#343752}
-      .th-scan-button.secondary,.th-mobile-config .secondary{background:#eef0f7;color:#41495f;border:1px solid #dfe3ee}
-      .th-theme-preview{padding:10px;background:#f8f8fc;border-color:#eeeef6;border-radius:12px}
-      .th-theme-preview strong{font-size:15px;white-space:normal;overflow-wrap:anywhere}.th-theme-preview span,.th-theme-preview small{font-size:12px}
-      .th-compact-summary,.th-scan-result{font-size:12px;background:#f5f4fb;color:#51496e;white-space:normal;overflow-wrap:anywhere}
-      .th-storage-status{font-size:11px;background:#fff;border-radius:8px;color:#626b80}
-      .th-card>small,.th-card>a{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
-      .th-section-title{font-size:13px;line-height:1.5;padding-top:12px;margin-top:0;border-color:#edf0f6;color:#41495f}.th-section-title small{font-size:11px;color:#717a8d}
-      .th-time-grid{gap:8px}.th-mobile-config .th-time-chip,.th-mobile-config .th-hour-chip{min-height:44px;min-width:64px;border-radius:12px;font-size:13px;padding:9px 10px}
-      .th-time-chip.selected{background:#eeeafd;color:#5142ad;border-color:#c9bdf5}.th-time-chip b,.th-hour-chip b{background:#6651c9}
-      .th-picker-label{font-size:13px;color:#41495f}.th-picker-shell,.th-custom-picker-trigger{min-height:44px!important;border-radius:11px!important}.th-picker-display{font-size:16px!important}
-      .th-help{font-size:12px;line-height:1.6;color:#5c667b;background:#f4f6fa;padding:10px 11px;border-radius:11px}
-      .th-warning{font-size:12px;line-height:1.55;padding:11px;background:#fff8e8;color:#705316}
-      .th-open-display{display:grid;gap:5px;padding:13px;background:#f0ecff;border:1px solid #ded5fa;border-radius:12px}
-      .th-open-display span{font-size:12px;color:#665795}.th-open-display strong{font-size:16px;line-height:1.5;color:#4a3695;overflow-wrap:anywhere}
-      .th-readiness strong{color:#303b53}.th-readiness [data-opening-countdown]{margin-top:5px;color:#5540aa;font-weight:800}
-      .th-mode-badge{margin-left:auto;font-size:11px;line-height:1.4;border:1px solid #e3ddf5;border-radius:999px;padding:4px 8px;background:#f8f5ff;color:#5a489b}
-      .th-run-state{display:flex;align-items:center;gap:7px;font-size:12px;line-height:1.5;color:#4b5670;background:#f6f8fb;padding:9px 11px;border-radius:10px}
-      .th-state-dot{width:7px;height:7px;flex:none;border-radius:50%;background:#7275a4}
-      .th-config-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.th-config-actions button{width:100%;min-width:0}
-      .th-execution-card [data-action=prepare]{background:#6651c9;color:#fff;border:1px solid #6651c9;min-height:48px;font-size:15px}.th-execution-card [data-action=stop]{min-height:48px}
-      .th-subsection{background:#fff;border-color:#e3e6f0;border-radius:13px}.th-subsection>summary{min-height:44px;font-size:13px;padding:12px}
-      .th-subsection>summary:after{content:'＋';color:#7a8193;font-size:16px;flex:none}.th-subsection[open]>summary:after{content:'−'}
-      .th-subsection-body{gap:11px;padding:0 12px 12px;overflow:visible}.th-more-settings>.th-subsection-body{background:#f7f8fc;padding:12px;border-radius:0 0 13px 13px}
-      .th-status-panel{border-radius:15px;box-shadow:0 6px 20px rgba(22,27,44,.1)}.th-status-panel>summary{font-size:12px;min-height:44px}.th-status-summary{font-size:11px}
-      button:focus-visible,summary:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #b9a9f2;outline-offset:2px}
-      @media(max-width:420px){.th-shell{width:calc(100vw - 24px);max-width:390px;right:max(8px,env(safe-area-inset-right))}.th-card{padding:12px}.th-mobile-config{padding:10px}.th-top-actions button{font-size:12px}}
     </style><div class="th-shell${isDesktopRuntime?' th-desktop-runtime':''}">${createMobileConfigMarkup(profiles,state,viewState,localUser,syncConfig)}<details class="th-status-panel"><summary><span>상태 / 상세</span><small class="th-status-summary">${esc((viewState.mode==='practice'?'연습':viewState.mode==='confirm'?'확정':'실전')+' · '+(viewState.statusText||'대기')+' · 오픈 '+(viewState.openingText||'확인 필요'))}</small></summary><div class="th-status-content">${deps.createAppMarkup?deps.createAppMarkup(viewState):''}</div></details></div>`;
     rootNode.querySelector('[data-action="prepare"]')?.addEventListener('click',()=>onPrepare?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="practice-now"]')?.addEventListener('click',()=>onPracticeNow?.(readConfig(rootNode)));
@@ -3170,7 +3120,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.44');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.43');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.syncStatusText=syncStatusText;
@@ -3318,7 +3268,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.44');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.43');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(compareVersions(remote,current)>0){
           const accepted=hostRoot.confirm?.(`Ticket Helper v${remote} 새 버전이 있습니다.\n현재 v${current}\n\n업데이트 파일을 열까요? 코드 화면이 열리면 Safari 주소창의 확장 기능 → Userscripts → 업데이트를 눌러 승인하세요.`);
