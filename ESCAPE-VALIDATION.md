@@ -1,4 +1,13 @@
-# 방탈출 Ticket Helper 0.1.47 검토
+# 방탈출 Ticket Helper 0.1.48 검토
+
+## v0.1.48 · 날짜·시간 선택 후 밀린 갱신 처리 · 2026-10-02
+
+native 날짜/시간 선택 중 background render를 미룬 뒤 change만 발생하면 held는 해제되지만 pending draw가 실행되지 않는 문제를 DOM 이벤트 테스트로 재현했다. 실제 onChange는 날짜/시간 필드를 전체 재렌더 없이 저장하므로 다른 render 요청이나 blur 전까지 갱신이 남을 수 있었다. change 이벤트에서 0ms 작업을 예약하여 현재 change 핸들러 완료 후 pending state만 한 번 그리도록 수정. flush 시 held/gesture를 다시 검사하므로 직후 다른 선택창을 열면 계속 보호한다. 추가 고정 대기·선택창 재호출 없음.
+
+date/time 각각 queued update 적용, 연속 요청 합치기, 적용 직후 다음 picker 열기 보호를 검사했다. 기존 site/branch/profile 선택·포커스/스크롤/접힌 구역 복원 검사 유지. 방탈출29개 테스트 파일 통과 및 세 번들 동일·문법 검사. 실제 Safari native picker/320px 화면 잘림·아이폰 설치본 자동 동작은 미검증. jsdom은 레이아웃 엔진이 아니므로 입력칸 잘림 해결로 보고하지 않는다. 로컬 Playwright 브라우저 실행 파일이 없어 시각 검증하지 못했으며 기존 클라우드 local preview 차단을 우회하지 않았다. 재현 근거 없이 CSS는 변경하지 않음.
+
+카탈로그·예약 흐름·야구 코드/배포파일 변경 없음. 이전 전체 npm test의 야구 fixture JSON 오류는 별도이며 이번에는 관련 test:escape만 재검사했다.
+
 
 ## v0.1.47 · 비트포비아 선택·입력 연동 · 2026-10-02
 
