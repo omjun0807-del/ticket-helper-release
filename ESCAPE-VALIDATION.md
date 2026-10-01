@@ -1,4 +1,21 @@
-# 방탈출 Ticket Helper 0.1.48 검토
+# 방탈출 Ticket Helper 0.1.49 검토
+
+## v0.1.49 · 요청 UI 정리 / 비트포비아 D-6 / 업데이트 편의 · 2026-10-02
+
+비트포비아32개에 D-6과 기존 공식 지점별13~21시를 조합한 openingRule 설정. D-6은 2026-10-02 사용자가 10/8 미오픈 화면과 일주일 안내를 근거로 반영 요청한 사용자 설정이며 configured로 표시. 공식 검증으로 승격하지 않음. 날짜 null인 기존 설정은 이관, 사용자 지정 규칙/시각은 보존. 10/8 강남던전 오픈 계산은10/2 16:00 KST. seed partners-7. 파트너152/이미지URL149/규칙141(공식76+사용자65).
+
+실패 시 다음 테마 UI와 상세 상태의 중복 대체테마 카드 제거. 저장된 fallbackEnabled=true라도 runtime false, 실행 machine에 전달하는 프로필의 fallbackThemeIds는 빈 배열로 제한. 기존 데이터/일반 core API는 호환성을 위해 보존하되 Userscript에서 자동 테마 변경 실행은 하지 않음. 보조 시간대·회차 우선순위 기능은 유지.
+
+상단 현재페이지인식/상세보기 버튼 제거. ‘테마 등록 · 현재 페이지’ 안에 ‘현재 페이지 정보 읽기’ 배치. 이 동작은 지점·테마명·이미지 정보만 읽으며 회차 관찰/저장을 하지 않음. 기존에는 현재 회차를 선택한 cfg.targetDate로 저장할 수 있었으므로 별도 목표일 회차 미리보기만 날짜 회차 저장을 담당. 단일 기본 화면과 추가 설정 접기 유지, 이전 detailed 설정은 기본 화면으로 이관.
+
+아이폰: 6시간 간격의 메타 자동 확인, 새 버전 inline 표시, 버튼 한 번으로 공식 설치 파일 열기. 기존 confirm 제거. 코드 자동 실행/설치 파일 자동 교체는 하지 않음. PC Tampermonkey는 기존 manager 자동 업데이트 사용. Userscripts 공식 README는 update button과 캐시된 @require를 설명하고 v4.8.4 release는 자동 확인 일시 중단 기록. Userscripts 설치 파일 쓰기 API를 확인하지 못했으므로 무승인 자동 설치를 구현/보장했다고 보고하지 않음. IPHONE-AUTO-UPDATE.md에 Apple 시간 자동화+파일 기반 저장을 조합한 설정안 작성(기기 폴더/파일명 최초 지정 및 실기기 확인 필요; 설치된 shortcut 아님).
+
+업데이트 확인/이동은 checkpoint·첫 generation=0 포함 activeRun·최종 입력 화면(go rev.make/rev.make.input, inline theme_time_num, keyescape/네이버request/tonybillycreate)·오픈1분 전 금지. 네트워크 완료와 설정 저장 완료 뒤 다시 검사. 중복 요청 억제, 실패/잘못된 메타에는 성공 시각 미기록, Safari 복귀 시 간격 준수 확인. 새버전 상단/추가설정 두 버튼 모두 binding. synthetic runtime tests에서 자동 확인은 confirm/이동 없음, 수동 클릭은 설치URL, 예약폼/armed/실행0 차단 확인. 테스트 중 실제 다운로드/예약 제출 없음.
+
+방탈출30개 파일 통과, 문법·3배포번들 동일. 신규 updater DOM/runtime 검사와 기존 카탈로그 migration/UI/panel 검사 포함. 아이폰 설치본·정각 혼잡·단축어·실제 manager 자동 설치는 미검증. 전체 npm test의 기존 야구 fixture 오류는 별도이며 이번 관련 test:escape 검사만 실행. 야구파일 미변경.
+
+근거: https://github.com/quoid/userscripts / https://github.com/quoid/userscripts/releases / https://www.tampermonkey.net/documentation.php / https://support.apple.com/ko-kr/guide/shortcuts/apd602971e63/9.0/ios/26 . 확인일2026-10-02.
+
 
 ## v0.1.48 · 날짜·시간 선택 후 밀린 갱신 처리 · 2026-10-02
 
