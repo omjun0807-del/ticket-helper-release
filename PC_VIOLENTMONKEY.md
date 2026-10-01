@@ -1,15 +1,15 @@
-# Ticket Helper PC — Violentmonkey 설치
+# Ticket Helper PC — Tampermonkey 설치
 
 ## 권장 구성
 - Chrome 또는 Edge
-- Violentmonkey
+- Tampermonkey
 - Ticket Helper Userscript
 
 ## 설치
-1. Chrome Web Store에서 Violentmonkey를 설치합니다.
+1. Chrome Web Store에서 Tampermonkey를 설치합니다.
 2. 아래 Ticket Helper 설치 URL을 엽니다.
    - https://raw.githubusercontent.com/omjun0807-del/ticket-helper-release/main/ticket-helper.user.js
-3. Violentmonkey의 설치 화면에서 설치를 승인합니다.
+3. Tampermonkey의 설치 화면에서 설치를 승인합니다.
 4. 키이스케이프 또는 네이버 예약 페이지를 새로고침합니다.
 
 ## 자동 업데이트
@@ -18,7 +18,7 @@ Ticket Helper에는 아래 메타데이터가 포함되어 있습니다.
 - @updateURL
 - @downloadURL
 
-Violentmonkey는 이 정보를 사용해 새 버전을 확인하고 업데이트합니다.
+Tampermonkey는 이 정보를 사용해 새 버전을 확인하고 업데이트합니다.
 PC에서는 별도의 ZIP 교체나 chrome://extensions 새로고침이 필요하지 않습니다.
 
 ## PC / iPhone 공용
@@ -32,3 +32,4 @@ PC에서는 별도의 ZIP 교체나 chrome://extensions 새로고침이 필요�
 
 ## PC 선택 UI
 PC에서는 날짜 달력과 오픈 시각 선택기가 패널 안에서 인라인으로 펼쳐집니다. 아래 설정 섹션이 선택기를 덮거나 잘라내지 않도록 구성되어 있습니다.
+

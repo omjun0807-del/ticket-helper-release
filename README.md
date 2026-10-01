@@ -3,14 +3,14 @@
 Personal escape-room / reservation helper.
 
 ## Recommended setup
-- PC Chrome/Edge: Violentmonkey + Ticket Helper Userscript
+- PC Chrome/Edge: Tampermonkey + Ticket Helper Userscript
 - iPhone Safari: Userscripts + the same Ticket Helper Userscript
 
 Both platforms use the same public `ticket-helper.user.js` and the same GitHub sync format.
 
 ## Current releases
-- Userscript core v0.1.40
-- PC Violentmonkey userscript: recommended
+- Userscript core v0.1.41
+- PC Tampermonkey userscript: recommended
 - iPhone Safari + Userscripts
 - Legacy unpacked PC extension v0.1.24
 - Chrome Web Store package v0.1.24 (not required for the recommended PC setup)
@@ -35,8 +35,8 @@ Both platforms use the same public `ticket-helper.user.js` and the same GitHub s
 - Mobile practice reuses the already scanned Keyescape page, trusts the already selected theme/date, and starts directly from session selection
 - optional private GitHub device sync for theme/session settings (PII excluded)
 
-## PC Violentmonkey
-Open the public Userscript URL after installing Violentmonkey:
+## PC Tampermonkey
+Open the public Userscript URL after installing Tampermonkey:
 
 `https://raw.githubusercontent.com/omjun0807-del/ticket-helper-release/main/ticket-helper.user.js`
 
@@ -65,6 +65,10 @@ It is no longer the recommended PC install path because Chrome cannot let an unp
 - `.github/workflows/publish-release.yml`: public release publishing
 
 Personal booking data such as name, phone, cookies, or credentials must never be committed here.
+
+### v0.1.41
+
+키이스케이프 참여 인원 선택을 연결하고, 중지 후 늦게 나타난 인원 컨트롤을 클릭하지 않도록 보완했습니다. 이미 선택된 인원은 다시 변경하지 않고, 숨겨진 목록은 연 다음 선택합니다. PC 안내는 Tampermonkey 기준입니다. 방탈출 테스트 26개 통과와 실사이트 미검증 범위는 [검증 기록](ESCAPE-VALIDATION.md)에 정리했습니다.
 
 ### v0.1.40
 
