@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.49
+// @version      0.1.50
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.49";
+globalThis.TICKET_HELPER_VERSION="0.1.50";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1634,20 +1634,25 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
   function createNaverBookingAdapter({page,bookingUrl,paymentPolicy={}}){
     if(!page) throw new TypeError('page is required');
+    let requestedDate=null,selectedLabel=null;
+    const dateMatches=()=>!requestedDate||page.currentTargetDate()===requestedDate;
     return {
       id:'naver-booking',
       async selectTargetDate(targetDate){
+        requestedDate=targetDate;selectedLabel=null;
         if(page.currentTargetDate()===targetDate) return ok();
         const navigateTo=targetUrlForDate(bookingUrl,targetDate);
         return navigateTo?fail('date-missing','target date requires direct-date navigation',{navigateTo}):fail('date-missing','could not construct target-date URL');
       },
       async readSessions(){
+        if(!dateMatches())throw diagError('date-missing','requested date changed before reading sessions');
         const state=page.sessionContainerState();
         if(state==='missing') throw diagError('session-container-missing','session container not found');
         if(state==='ambiguous') throw diagError('session-ambiguous','multiple ambiguous session containers found');
         return deps.parseNaverSessionDescriptors(page.listSessionDescriptors());
       },
       async chooseSession(session){
+        selectedLabel=null;if(!dateMatches())return fail('date-missing','requested date changed before selection');
         const sessions=deps.parseNaverSessionDescriptors(page.listSessionDescriptors());
         const matches=sessions.filter(s=>s.label===session.label);
         if(!matches.length) return fail('session-unavailable',`session not found: ${session.label}`);
@@ -1657,9 +1662,13 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const outcome=await page.waitForSlotOutcome(matches[0].label);
         if(outcome==='sold-out') return fail('session-unavailable',`sold out: ${session.label}`);
         if(outcome!=='selected') return fail('navigation-failed',`session selection did not activate: ${session.label}`);
-        return ok({session:matches[0]});
+        if(!dateMatches())return fail('date-missing','requested date changed during selection');
+        selectedLabel=session.label;return ok({session:matches[0]});
       },
       async goNext(){
+        if(!dateMatches())return fail('date-missing','requested date changed before NEXT');
+        const current=deps.parseNaverSessionDescriptors(page.listSessionDescriptors()).filter(s=>s.label===selectedLabel);
+        if(!selectedLabel||current.length!==1||!current[0].available||(typeof page.isSessionSelected==='function'&&!page.isSessionSelected(selectedLabel)))return fail('session-unavailable','selected session changed before NEXT');
         const actions=page.findExactActions('다음');
         if(!actions.length) return fail('next-button-missing','다음 button not found');
         if(actions.length>1) return fail('next-button-ambiguous','multiple 다음 buttons found');
@@ -1728,6 +1737,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       clickElement(el){
         try { el.scrollIntoView?.({block:'center',inline:'center',behavior:'instant'}); } catch{}
         try { el.click?.(); } catch{}
+      },
+      isSessionSelected(label){
+        const selected=listSessionDescriptors().filter(d=>d.element.getAttribute('aria-selected')==='true'||d.element.getAttribute('aria-pressed')==='true'||/(?:^|\s)(?:selected|is_selected)(?:\s|$)/.test(d.element.className));
+        return selected.length===1&&deps.parseNaverClock(selected[0].label)?.label===label;
       },
       async waitForSlotOutcome(label){
         const started=Date.now();
@@ -2174,7 +2187,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     };
   }
   function createBrowserPartnerPage(doc,win,profile,options={}){
-    let selected=null,refreshFrom=null;
+    let selected=null,refreshFrom=null,requestedDate=null,selectedBeat=null;
     const sleep=ms=>new Promise(resolve=>win.setTimeout(resolve,ms));
     const text=el=>String(el?.innerText||el?.textContent||'').trim();
     const field=selector=>doc.querySelector(selector);
@@ -2189,7 +2202,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       return String(id)===String(profile.themeId)?cards[0]:null;
     }
     function beatDateReady(){
-      try{const el=field('input[name="rev_days"]');const rendered=el?.getAttribute('value');return !!rendered&&rendered===el.value&&(new URL(win.location.href).searchParams.get('rev_days')||rendered)===el.value;}catch{return false;}
+      try{const el=field('input[name="rev_days"]');const rendered=el?.getAttribute('value');return !!rendered&&(!requestedDate||el.value===requestedDate)&&rendered===el.value&&(new URL(win.location.href).searchParams.get('rev_days')||rendered)===el.value;}catch{return false;}
     }
     function beatLinkReady(el){
       if(el.closest('.dead')||!el.getAttribute('href'))return false;
@@ -2235,7 +2248,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       },
       async selectDate(date){
         if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return false;
-        if(profile.adapterId==='beatphobia')return beatDateReady()&&field('input[name="rev_days"]')?.value===date;
+        if(profile.adapterId==='beatphobia'){requestedDate=date;selected=null;selectedBeat=null;return beatDateReady()&&field('input[name="rev_days"]')?.value===date;}
         if(profile.adapterId==='zeroworld'){
           if(field('input[name="rev_days"]')?.value===date)return true;
           if(!await wait(()=>doc.querySelectorAll('#calendar_data a[href^="javascript:fun_days_select"]').length>0))return false;
@@ -2253,8 +2266,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       },
       readSessions:sessions,
       waitForSessions:()=>wait(()=>(!refreshFrom||!refreshFrom.isConnected)&&sessions().length>0),
-      chooseSession(session){const matches=sessions().filter(s=>s.available&&s.label===session.label);selected=(profile.adapterId==='beatphobia'&&matches.length!==1)?null:(matches[0]?.element||null);return !!selected;},
-      async advance(){if(!selected)return false;if(profile.adapterId==='beatphobia'){if(options.isCancelled?.())return false;const current=sessions(),chosen=current.find(s=>s.available&&s.element===selected);if(!chosen||current.filter(s=>s.available&&s.label===chosen.label).length!==1)return false;}selected.click();if(profile.adapterId==='zeroworld')return wait(()=>!!field('input[name="theme_time_num"]')?.value);return true;},
+      chooseSession(session){const matches=sessions().filter(s=>s.available&&s.label===session.label);selected=(profile.adapterId==='beatphobia'&&matches.length!==1)?null:(matches[0]?.element||null);if(profile.adapterId==='beatphobia')selectedBeat=selected?{label:session.label,date:field('input[name="rev_days"]')?.value,href:selected.getAttribute('href')}:null;return !!selected;},
+      async advance(){if(!selected)return false;if(profile.adapterId==='beatphobia'){if(options.isCancelled?.())return false;const current=sessions(),chosen=current.find(s=>s.available&&s.element===selected);if(!chosen||!selectedBeat||chosen.label!==selectedBeat.label||field('input[name="rev_days"]')?.value!==selectedBeat.date||selected.getAttribute('href')!==selectedBeat.href||current.filter(s=>s.available&&s.label===selectedBeat.label).length!==1)return false;}selected.click();if(profile.adapterId==='zeroworld')return wait(()=>!!field('input[name="theme_time_num"]')?.value);return true;},
       selectParticipants:count=>selectParticipantCount(doc,win,count,{isCancelled:options.isCancelled}),
       fillUser(user){
         const name=field('input[name="name"]');const phone=String(user?.phone||'').replace(/\D/g,'');
@@ -3213,7 +3226,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.49'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.50'))>0?String(settings.updateRemoteVersion):''};
     let runGeneration=0,activeRun=null;
     let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
 
@@ -3227,7 +3240,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom','beatphobia'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.49');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.50');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -3386,7 +3399,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.49');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.50');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
