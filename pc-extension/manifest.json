@@ -32,7 +32,9 @@
     "https://www.page-today.co.kr/*",
     "https://nabijam.com/*",
     "https://www.nabijam.com/*",
-    "https://m.place.naver.com/*"
+    "https://m.place.naver.com/*",
+    "https://xdungeon.net/*",
+    "https://www.xdungeon.net/*"
   ],
   "background": {
     "service_worker": "service-worker.js"
@@ -64,7 +66,9 @@
         "https://www.page-today.co.kr/*",
         "https://nabijam.com/*",
         "https://www.nabijam.com/*",
-        "https://m.place.naver.com/*"
+        "https://m.place.naver.com/*",
+        "https://xdungeon.net/*",
+        "https://www.xdungeon.net/*"
       ],
       "js": [
         "bridge-core.js",

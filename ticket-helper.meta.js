@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.45
+// @version      0.1.46
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -23,6 +23,8 @@
 // @match        https://www.page-today.co.kr/*
 // @match        https://nabijam.com/*
 // @match        https://www.nabijam.com/*
+// @match        https://xdungeon.net/*
+// @match        https://www.xdungeon.net/*
 // @match        https://m.place.naver.com/*
 // @updateURL    https://raw.githubusercontent.com/omjun0807-del/ticket-helper-release/main/ticket-helper.meta.js
 // @downloadURL  https://raw.githubusercontent.com/omjun0807-del/ticket-helper-release/main/ticket-helper.user.js
