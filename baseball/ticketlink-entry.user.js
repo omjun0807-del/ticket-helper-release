@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.2
+// @version      0.1.3
 // @description  지정한 경기 목록에서 오픈 시각 1회 새로고침 및 예매 진입. 좌석/결제 자동화 없음.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
@@ -67,7 +67,44 @@ function mount(doc,win,options={}){
  if(!/^https:\/\/(www\.)?ticketlink\.co\.kr\/sports\//.test(win.location.href))return null;
  const now=options.now||(()=>Date.now()),reload=options.reload||(()=>win.location.reload());
  const visible=options.visible||(el=>{if(!el.isConnected||el.closest('[hidden]'))return false;for(let p=el;p;p=p.parentElement){const s=win.getComputedStyle(p);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0')return false;}return el.getClientRects().length>0;});
- const panel=doc.createElement('aside');panel.id='th-entry';panel.innerHTML=`<style>#th-entry{position:fixed;bottom:16px;right:16px;z-index:2147483647;width:340px;max-width:calc(100vw - 24px);max-height:85vh;overflow:auto;padding:18px;background:#fff;color:#17213c;border:2px solid #5551df;border-radius:16px;box-shadow:0 8px 30px #0003;font:14px/1.5 system-ui}#th-entry[data-folded=true]{width:auto;padding:8px}#th-entry[data-folded=true]>strong{display:none}#th-entry [hidden]{display:none!important}#th-entry label{display:block;margin:8px 0}#th-entry input{display:block;box-sizing:border-box;width:100%;padding:6px;font:inherit}#th-entry button{padding:9px;margin:4px;border:1px solid #ccc;border-radius:8px;cursor:pointer}#th-entry [data-status]{color:#4039aa;white-space:pre-wrap}</style><strong>Ticket Helper · 경기 진입 시험판 0.1.2</strong><button data-toggle aria-expanded="true">접기</button><div data-content><p>PC 경기 목록용 · 좌석 선택 없음</p><details open><summary>목표 경기 설정</summary><label>경기 날짜<input name="date" type="date"></label><label>경기 시간<input name="time" type="time" value="18:30"></label><label>홈팀 (화면에 나온 이름)<input name="home" placeholder="LG"></label><label>원정팀 (화면에 나온 이름)<input name="away" placeholder="KT"></label><label>예매 오픈 시각 (PC 현지 시각)<input name="open" type="datetime-local" step="1"></label></details><button data-mark>1. 목표 경기 버튼 지정</button><button data-check>경기 일치 확인</button><button data-arm>2. 시작 대기</button><button data-stop>중지</button><p data-status role="status">먼저 경기 정보를 입력하고 목표 버튼을 지정하세요.</p><small>오픈 시각에 목록 1회 새로고침 → 일치하는 예매 버튼 1회 클릭. 예매 안내는 1회 확인합니다. PC 시계 기준이며 백그라운드 탭에서는 지연될 수 있습니다. 대기열·인증·보안 경고에서는 중지합니다. 오픈 정각 실기 검증 전입니다.</small><details><summary>시계 · 업데이트 · v0.1.2</summary><p>실행 기준: PC 현지 시계 · 서버 시각 보정 없음<br><a href="https://time.navyism.com/?host=www.ticketlink.co.kr" target="_blank" rel="noopener noreferrer">티켓링크 네이비즘 열기</a></p><small>Violentmonkey의 자동 업데이트 설정에 따라 새 버전을 받습니다. 새 코드는 다음 페이지 로딩부터 적용됩니다.</small></details></div>`;
+ const panel=doc.createElement('aside');panel.id='th-entry';panel.setAttribute('aria-label','야구 티켓 헬퍼');panel.innerHTML=`<style>
+#th-entry,#th-entry *{box-sizing:border-box}
+#th-entry{position:fixed;right:20px;bottom:20px;z-index:2147483647;width:380px;max-width:calc(100vw - 24px);max-height:calc(100vh - 40px);overflow:auto;background:#fff;color:#202139;border:1px solid #e4e1f4;border-radius:24px;box-shadow:0 16px 60px #29204b26;font:14px/1.5 system-ui,-apple-system,sans-serif;isolation:isolate;text-align:left}
+#th-entry [hidden]{display:none!important}
+#th-entry p{margin:0}#th-entry small{font-size:12px;line-height:1.6;color:#63657a}
+#th-entry .th-head{display:flex;align-items:center;gap:11px;padding:19px 20px;background:linear-gradient(125deg,#f1edff,#faf9ff);border-bottom:1px solid #ebe7fa}
+#th-entry .th-logo{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:14px;background:#6452d8;color:white;box-shadow:0 4px 10px #6452d830}
+#th-entry .th-head-copy{flex:1;min-width:0}#th-entry .th-head-copy strong{display:block;font-size:17px;letter-spacing:-.5px;font-weight:750}#th-entry .th-head-copy span{display:block;font-size:11px;color:#6d628e;margin-top:2px}
+#th-entry button{appearance:none;display:inline-flex;justify-content:center;align-items:center;gap:6px;border:1px solid #deddea;border-radius:12px;min-height:44px;margin:0;padding:10px 12px;background:white;color:#35334d;font:600 13px/1.4 system-ui;cursor:pointer;box-shadow:none}
+#th-entry button:hover{background:#f4f1ff;border-color:#b8aceb}#th-entry button:active{transform:translateY(1px)}#th-entry button:focus-visible,#th-entry input:focus-visible,#th-entry a:focus-visible,#th-entry summary:focus-visible{outline:3px solid #b5a6f3;outline-offset:2px}
+#th-entry [data-toggle]{min-width:48px;font-size:12px;padding:8px 10px;background:#fff9;border-color:#e4def8;color:#62519b}
+#th-entry [data-content]{padding:19px 20px 20px}
+#th-entry .th-section-title{font-weight:750;font-size:14px;letter-spacing:-.3px;margin-bottom:12px}#th-entry .th-section-title span{font-weight:500;font-size:11px;color:#747087;margin-left:6px}
+#th-entry .th-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:12px}
+#th-entry label{display:block;min-width:0;margin:0;font-size:12px;font-weight:650;color:#56536a}
+#th-entry input{display:block;appearance:auto;min-width:0;width:100%;max-width:100%;min-height:44px;margin-top:6px;padding:10px 11px;border:1px solid #dedeea;border-radius:11px;background:#fafafe;color:#24243e;font:500 13px/1.5 system-ui;box-shadow:none}
+#th-entry input::placeholder{color:#9a96aa}#th-entry input:focus{border-color:#8d7bdc;background:white}#th-entry input::-webkit-datetime-edit{min-width:0;padding:0}
+#th-entry .th-open{padding:13px;border:1px solid #e6e0fa;border-radius:15px;background:#f7f4ff}#th-entry .th-open input{background:#fff}#th-entry .th-open small{display:block;margin-top:7px;font-size:11px;color:#72658e}
+#th-entry .th-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:16px}
+#th-entry [data-mark]{background:#f1edff;border-color:#e3dbfa;color:#5941ba}#th-entry [data-arm]{background:#6551d6;border-color:#6551d6;color:white;box-shadow:0 4px 12px #6551d624}#th-entry [data-arm]:hover{background:#5742c8}#th-entry [data-stop]{color:#a64a5e;border-color:#eedfe3;background:#fffafb}
+#th-entry .th-status-card{margin-top:16px;padding:13px 14px;border:1px solid #e8e5f3;border-radius:15px;background:#faf9fe}#th-entry .th-status-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:750;color:#71618f;margin-bottom:7px}#th-entry .th-dot{width:6px;height:6px;border-radius:50%;background:#8065dc}#th-entry [data-status]{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.65;color:#46405f}
+#th-entry .th-foot{margin-top:14px;padding-top:11px;border-top:1px solid #eeecf4}#th-entry details{margin-top:7px}#th-entry summary{cursor:pointer;font-size:12px;font-weight:600;color:#726a86;padding:7px 0}#th-entry details small{display:block;padding:3px 0 7px}#th-entry details p{font-size:12px;line-height:1.7;color:#636078;margin:5px 0}#th-entry a{color:#6450cb;text-decoration:underline;text-underline-offset:3px;font-size:12px}
+#th-entry[data-folded=true]{width:auto;overflow:visible;border:0;border-radius:100px;background:transparent;box-shadow:0 8px 26px #4c35a92e}
+#th-entry[data-folded=true] .th-head{padding:0;border:0;background:none}#th-entry[data-folded=true] .th-logo,#th-entry[data-folded=true] .th-head-copy{display:none}#th-entry[data-folded=true] [data-toggle]{border:0;min-height:48px;border-radius:100px;background:#6551d6;color:#fff;padding:12px 22px;font-size:14px}
+@media(max-width:420px){#th-entry{right:12px;bottom:12px;max-height:calc(100vh - 24px)}#th-entry .th-head{padding:15px 16px}#th-entry [data-content]{padding:16px}#th-entry input{font-size:12px;padding:10px 8px}}
+@media(prefers-reduced-motion:reduce){#th-entry button:active{transform:none}}
+</style>
+<header class="th-head"><div class="th-logo" aria-hidden="true"><svg width="25" height="25" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M6 5.5c4 2 4 11 0 13M18 5.5c-4 2-4 11 0 13M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.3"/></svg></div><div class="th-head-copy"><strong>Ticket Helper</strong><span>BASEBALL · 경기 진입 시험판 0.1.3</span></div><button type="button" data-toggle aria-expanded="true" aria-controls="th-entry-content">접기</button></header>
+<div data-content id="th-entry-content">
+<div class="th-section-title">목표 경기 <span>화면에 나온 팀 이름으로 입력</span></div>
+<div class="th-grid"><label>경기 날짜<input name="date" type="date"></label><label>경기 시작 시간<input name="time" type="time" value="18:30"></label></div>
+<div class="th-grid"><label>홈팀<input name="home" placeholder="예: LG"></label><label>원정팀<input name="away" placeholder="예: KIA"></label></div>
+<div class="th-open"><label>예매 오픈 시각<input name="open" type="datetime-local" step="1"></label><small>현재 실행 기준: PC 현지 시계</small></div>
+<div class="th-actions"><button type="button" data-mark>① 경기 버튼 지정</button><button type="button" data-arm>② 시작 대기</button><button type="button" data-check>경기 일치 확인</button><button type="button" data-stop>중지</button></div>
+<div class="th-status-card"><div class="th-status-label"><span class="th-dot" aria-hidden="true"></span>실행 상태</div><p data-status role="status" aria-live="polite">경기 정보를 입력한 뒤 목표 경기 버튼을 지정하세요.</p></div>
+<div class="th-foot"><details><summary>진행 방식과 확인할 사항</summary><small>오픈 시각에 목록 1회 새로고침 → 목표 예매 버튼 1회 클릭 → 일반 예매 안내 1회 확인.<br>대기열·인증·보안 경고에서는 중지합니다. 예약창과 보안문자는 직접 확인하세요. 좌석 선택은 아직 연결되지 않았습니다.<br>이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.</small></details><details><summary>시계 · 자동 업데이트 · v0.1.3</summary><p>PC 현지 시계 기준이며 서버 시각 보정은 없습니다.</p><a href="https://time.navyism.com/?host=www.ticketlink.co.kr" target="_blank" rel="noopener noreferrer">티켓링크 네이비즘 열기 ↗</a><small>Violentmonkey의 자동 업데이트 설정에 따라 새 버전을 받습니다. 새 코드는 다음 페이지 로딩부터 적용됩니다.</small></details></div>
+</div>
+`;
  doc.body.append(panel);const q=s=>panel.querySelector(s),say=t=>q('[data-status]').textContent=t;let state=null,target=null,marking=false,navigating=false,noticePending=null;
  function fold(value){panel.dataset.folded=String(value);q('[data-content]').hidden=value;q('[data-toggle]').textContent=value?'야구 헬퍼 열기':'접기';q('[data-toggle]').setAttribute('aria-expanded',String(!value));try{win.sessionStorage.setItem(FOLD_KEY,String(value));}catch{}}
  try{fold(win.sessionStorage.getItem(FOLD_KEY)==='true');}catch{}
