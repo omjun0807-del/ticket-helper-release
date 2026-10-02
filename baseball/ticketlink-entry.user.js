@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.7
-// @description  지정한 경기 목록에서 오픈 시각 1회 새로고침 및 예매 진입. 좌석/결제 자동화 없음.
+// @version      0.1.8
+// @description  오픈 시각 1회 새로고침 후 목표 경기 버튼 표시. 예매/안내 확인은 직접 클릭.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
 // @updateURL    https://raw.githubusercontent.com/omjun0807-del/ticket-helper-release/main/baseball/ticketlink-entry.meta.js
@@ -61,27 +61,9 @@ function noticeDiagnostic(doc,visible,panel){
  if(!controls.length)lines.push('확인 버튼을 현재 문서에서 찾지 못했습니다. 별도 창 또는 iframe 여부를 확인해야 합니다.');
  return lines.join('\n');
 }
-function findNoticeConfirmation(doc,visible,panel){
- const found=new Set();
- for(const button of doc.querySelectorAll('button,a,input[type=button],[role=button]')){
-  if(panel.contains(button)||!visible(button)||button.disabled||button.matches(':disabled')||button.getAttribute('aria-disabled')==='true'||button.classList.contains('disabled')||compact(button.value||textOf(button))!=='확인')continue;
-  for(let box=button.parentElement;box&&box!==doc.body;box=box.parentElement){
-   if(!isNoticeBox(box)||box.matches('main,article,section,nav,header,footer')||!visible(box))continue;
-   const text=compact(textOf(box));
-   const titled=Array.from(box.querySelectorAll('*')).some(el=>visible(el)&&el.children.length===0&&compact(textOf(el))==='예매안내');
-   // common_modal_footer has the button but no title/body; inspect its enclosing modal.
-   if(!titled||!text.includes('시야')||!text.includes('관람'))continue;
-   if(text.length>4000||box.querySelector('input,textarea,select,iframe')||/보안문자|인증문자|자동입력방지|대기순번|접속대기|결제동의/.test(text))break;
-   const controls=Array.from(box.querySelectorAll('button,a,[role=button]')).filter(el=>visible(el)&&compact(textOf(el))==='확인');
-   if(controls.length===1)found.add(button);
-   break;
-  }
- }
- return found.size===1?Array.from(found)[0]:null;
-}
 function decide(state,{now,url,access,targetReady}){
  if(!state||!['armed','reloaded'].includes(state.phase)||!Number.isFinite(state.openAt)||!Number.isFinite(now)||url!==state.url||access!=='ready'||now>state.openAt+30000)return 'stop';
- if(now<state.openAt)return 'wait';if(state.phase==='armed')return 'reload';return targetReady?'click':'wait';
+ if(now<state.openAt)return 'wait';if(state.phase==='armed')return 'reload';return targetReady?'highlight':'wait';
 }
 function mount(doc,win,options={}){
  if(doc.getElementById('th-entry'))return doc.getElementById('th-entry');
@@ -89,6 +71,7 @@ function mount(doc,win,options={}){
  const now=options.now||(()=>Date.now()),reload=options.reload||(()=>win.location.reload());
  const visible=options.visible||(el=>{if(!el.isConnected||el.closest('[hidden]'))return false;for(let p=el;p;p=p.parentElement){const s=win.getComputedStyle(p);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0')return false;}return el.getClientRects().length>0;});
  const panel=doc.createElement('aside');panel.id='th-entry';panel.setAttribute('aria-label','야구 티켓 헬퍼');panel.innerHTML=`<style>
+[data-th-entry-target=true]{outline:4px solid #6551d6!important;outline-offset:4px!important}
 #th-entry,#th-entry *{box-sizing:border-box}
 #th-entry{position:fixed;right:20px;bottom:20px;z-index:2147483647;width:380px;max-width:calc(100vw - 24px);max-height:calc(100vh - 40px);overflow:auto;background:#fff;color:#202139;border:1px solid #e4e1f4;border-radius:24px;box-shadow:0 16px 60px #29204b26;font:14px/1.5 system-ui,-apple-system,sans-serif;isolation:isolate;text-align:left}
 #th-entry [hidden]{display:none!important}
@@ -115,7 +98,7 @@ function mount(doc,win,options={}){
 @media(max-width:420px){#th-entry{right:12px;bottom:12px;max-height:calc(100vh - 24px)}#th-entry .th-head{padding:15px 16px}#th-entry [data-content]{padding:16px}#th-entry input{font-size:12px;padding:10px 8px}}
 @media(prefers-reduced-motion:reduce){#th-entry button:active{transform:none}}
 </style>
-<header class="th-head"><div class="th-logo" aria-hidden="true"><svg width="25" height="25" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M6 5.5c4 2 4 11 0 13M18 5.5c-4 2-4 11 0 13M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.3"/></svg></div><div class="th-head-copy"><strong>Ticket Helper</strong><span>BASEBALL · 경기 진입 시험판 0.1.7</span></div><button type="button" data-toggle aria-expanded="true" aria-controls="th-entry-content">접기</button></header>
+<header class="th-head"><div class="th-logo" aria-hidden="true"><svg width="25" height="25" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M6 5.5c4 2 4 11 0 13M18 5.5c-4 2-4 11 0 13M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.3"/></svg></div><div class="th-head-copy"><strong>Ticket Helper</strong><span>BASEBALL · 경기 진입 시험판 0.1.8</span></div><button type="button" data-toggle aria-expanded="true" aria-controls="th-entry-content">접기</button></header>
 <div data-content id="th-entry-content">
 <div class="th-section-title">목표 경기 <span>화면에 나온 팀 이름으로 입력</span></div>
 <div class="th-grid"><label>경기 날짜<input name="date" type="date"></label><label>경기 시작 시간<input name="time" type="time" value="18:30"></label></div>
@@ -123,10 +106,10 @@ function mount(doc,win,options={}){
 <div class="th-open"><label>예매 오픈 시각<input name="open" type="datetime-local" step="1"></label><small>현재 실행 기준: PC 현지 시계</small></div>
 <div class="th-actions"><button type="button" data-mark>① 경기 버튼 지정</button><button type="button" data-arm>② 시작 대기</button><button type="button" data-check>경기 일치 확인</button><button type="button" data-stop>중지</button><button type="button" data-diagnose style="grid-column:1/-1">안내창 진단 · 결과 표시</button></div>
 <div class="th-status-card"><div class="th-status-label"><span class="th-dot" aria-hidden="true"></span>실행 상태</div><p data-status role="status" aria-live="polite">경기 정보를 입력한 뒤 목표 경기 버튼을 지정하세요.</p></div>
-<div class="th-foot"><details><summary>진행 방식과 확인할 사항</summary><small>오픈 시각에 목록 1회 새로고침 → 목표 예매 버튼 1회 클릭 → 일반 예매 안내 1회 확인.<br>대기열·인증·보안 경고에서는 중지합니다. 예약창과 보안문자는 직접 확인하세요. 좌석 선택은 아직 연결되지 않았습니다.<br>이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.</small></details><details><summary>시계 · 자동 업데이트 · v0.1.7</summary><p>PC 현지 시계 기준이며 서버 시각 보정은 없습니다.</p><a href="https://time.navyism.com/?host=www.ticketlink.co.kr" target="_blank" rel="noopener noreferrer">티켓링크 네이비즘 열기 ↗</a><small>Tampermonkey의 자동 업데이트 설정에 따라 새 버전을 받습니다. 새 코드는 다음 페이지 로딩부터 적용됩니다.</small></details></div>
+<div class="th-foot"><details><summary>진행 방식과 확인할 사항</summary><small>오픈 시각에 목록 1회 새로고침 → 목표 경기 버튼 표시 → 예매와 안내 확인은 직접 클릭.<br>대기열·인증·보안 경고에서는 중지합니다. 예약창과 보안문자는 직접 확인하세요. 좌석 선택은 아직 연결되지 않았습니다.<br>이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.</small></details><details><summary>시계 · 자동 업데이트 · v0.1.8</summary><p>PC 현지 시계 기준이며 서버 시각 보정은 없습니다.</p><a href="https://time.navyism.com/?host=www.ticketlink.co.kr" target="_blank" rel="noopener noreferrer">티켓링크 네이비즘 열기 ↗</a><small>Tampermonkey의 자동 업데이트 설정에 따라 새 버전을 받습니다. 새 코드는 다음 페이지 로딩부터 적용됩니다.</small></details></div>
 </div>
 `;
- doc.body.append(panel);const q=s=>panel.querySelector(s),say=t=>q('[data-status]').textContent=t;let state=null,target=null,marking=false,navigating=false,noticePending=null;
+ doc.body.append(panel);const q=s=>panel.querySelector(s),say=t=>q('[data-status]').textContent=t;let state=null,target=null,marking=false,navigating=false,manualTarget=null;
  function fold(value){panel.dataset.folded=String(value);q('[data-content]').hidden=value;q('[data-toggle]').textContent=value?'야구 헬퍼 열기':'접기';q('[data-toggle]').setAttribute('aria-expanded',String(!value));try{win.sessionStorage.setItem(FOLD_KEY,String(value));}catch{}}
  try{fold(win.sessionStorage.getItem(FOLD_KEY)==='true');}catch{}
  const fields=['date','time','home','away','open'];
@@ -135,28 +118,24 @@ function mount(doc,win,options={}){
  function config(){return validateConfig(Object.fromEntries(['date','time','home','away'].map(k=>[k,q(`[name=${k}]`).value])));}
  function access(){
  const parts=[];for(const el of doc.body.children)if(el!==panel&&visible(el))parts.push(textOf(el));const text=parts.join(' ').replace(/\s+/g,'');
- if(/보안정책에따라서비스이용이제한|시스템에서비정상적인활동이감지|ErrorCode:?200/i.test(text))return 'blocked';
+ if(/비정상적인접근으로이용이일시제한|보안정책에따라서비스이용이제한|시스템에서비정상적인활동이감지|ErrorCode:?200/i.test(text))return 'blocked';
  if(/서비스접속대기중|현재대기순번|접속대기중|대기인원/.test(text))return 'queue';
  if(/보안문자를입력|자동입력방지문자를입력|인증문자를입력/.test(text)||Array.from(doc.querySelectorAll('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],input[type=password],input[name*=captcha i],input[id*=captcha i],input[aria-label*=보안문자]')).some(visible))return 'captcha';
  return /^\/sports\//.test(win.location.pathname)&&target&&doc.querySelector(target.rowSelector)&&visible(doc.querySelector(target.rowSelector))?'ready':'unknown';
  }
- function stop(message){state=null;marking=false;navigating=false;noticePending=null;win.sessionStorage.removeItem(KEY);say(message);}
+ function clearMarker(){if(manualTarget)manualTarget.removeAttribute('data-th-entry-target');manualTarget=null;}
+ function stop(message){state=null;marking=false;navigating=false;clearMarker();win.sessionStorage.removeItem(KEY);say(message);}
  function persist(){win.sessionStorage.setItem(KEY,JSON.stringify(state));}
  try{const saved=JSON.parse(win.sessionStorage.getItem(KEY)||'null');if(saved){validateConfig(saved.config);if(typeof saved.target?.rowSelector!=='string'||!Number.isFinite(saved.openAt))throw Error('saved target');state=saved;target=saved.target;for(const k of ['date','time','home','away'])q(`[name=${k}]`).value=saved.config[k];const at=new Date(saved.openAt),pad=n=>String(n).padStart(2,'0');q('[name=open]').value=`${at.getFullYear()}-${pad(at.getMonth()+1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;try{saveSettings();}catch{}}}catch{win.sessionStorage.removeItem(KEY);state=null;}
  function tick(){
- if(noticePending){
-  try{const status=access();if(now()>noticePending.until||win.location.href!==noticePending.url||['queue','blocked','captcha'].includes(status)){noticePending=null;say('예매 진입 후 안내 처리 종료 · 대기열과 인증은 직접 확인하세요.');return;}
-   const confirmation=findNoticeConfirmation(doc,visible,panel);if(confirmation){noticePending=null;say('예매 안내를 확인했습니다. 별도 예약창을 확인하세요.');confirmation.click();}return;
-  }catch(e){stop('안내 처리 중지: '+e.message);return;}
- }
  if(!state||navigating)return;try{const status=access();if(state.phase==='reloaded'&&status==='unknown'&&win.location.href===state.url&&now()>=state.openAt&&now()<=state.openAt+30000){say('경기 목록이 표시되기를 기다립니다. 추가 새로고침은 하지 않습니다.');return;}const button=findTarget(doc,target,state.config,visible),action=decide(state,{now:now(),url:win.location.href,access:status,targetReady:!!button});
  if(action==='stop'){stop(status==='queue'?'대기열 감지: 창을 유지하고 기다려 주세요.':status==='blocked'?'보안 경고: 동작을 중지했습니다.':status==='captcha'?'로그인·인증은 직접 진행하세요.':'화면·기한·경기 확인 실패로 중지했습니다.');return;}
  if(action==='wait'){say(now()<state.openAt?`오픈까지 ${Math.max(0,Math.ceil((state.openAt-now())/1000))}초 · 이 탭을 앞에 두세요.`:'새로고침 완료 · 목표 예매 버튼 활성화 대기 중');return;}
  if(action==='reload'){state.phase='reloaded';persist();navigating=true;say('목록을 한 번 새로고침합니다.');reload();return;}
- if(action==='click'){state.phase='clicked';persist();state=null;win.sessionStorage.removeItem(KEY);noticePending={until:now()+30000,url:win.location.href};say('목표 예매 버튼을 한 번 클릭했습니다. 예매 안내 확인 대기 · 예약창과 대기열을 확인하세요.');button.click();}
+ if(action==='highlight'){state=null;win.sessionStorage.removeItem(KEY);clearMarker();manualTarget=button;button.setAttribute('data-th-entry-target','true');button.scrollIntoView?.({block:'center',behavior:'instant'});button.focus?.({preventScroll:true});say('목표 경기의 예매 버튼을 표시했습니다. 사이트 버튼과 예매 안내 확인을 직접 눌러주세요.');}
  }catch(e){try{stop('중지: '+e.message);}catch{state=null;say('저장소 접근 실패로 중지했습니다.');}}}
  panel.entryTick=tick;
- doc.addEventListener('click',event=>{if(!marking||panel.contains(event.target))return;event.preventDefault();event.stopImmediatePropagation();try{target=captureTarget(event.target,config(),doc,visible);marking=false;say('지정한 경기:\n'+target.label+'\n입력이 맞으면 시작 대기를 누르세요.');}catch(e){marking=false;say(e.message);}},true);
+ doc.addEventListener('click',event=>{if(manualTarget&&manualTarget.contains(event.target)){clearMarker();say('사이트 예매 버튼을 직접 클릭했습니다. 안내 확인도 직접 진행하세요.');}if(!marking||panel.contains(event.target))return;event.preventDefault();event.stopImmediatePropagation();try{target=captureTarget(event.target,config(),doc,visible);marking=false;say('지정한 경기:\n'+target.label+'\n입력이 맞으면 시작 대기를 누르세요.');}catch(e){marking=false;say(e.message);}},true);
  panel.addEventListener('input',()=>{target=null;stop('설정이 바뀌었습니다. 목표 버튼을 다시 지정하세요.');try{saveSettings();}catch{say('설정 저장 실패: 브라우저 저장소를 확인하세요. 실행은 중지했습니다.');}});
  panel.addEventListener('click',event=>{const b=event.target.closest('button');if(!b)return;try{
  if(b.hasAttribute('data-toggle')){fold(panel.dataset.folded!=='true');return;}
@@ -164,9 +143,9 @@ function mount(doc,win,options={}){
  if(b.hasAttribute('data-stop')){stop('사용자가 중지했습니다.');return;}
  if(b.hasAttribute('data-mark')){config();stop('목표 경기의 예매 또는 오픈 예정 버튼을 클릭하세요. 이 클릭은 예매를 진행하지 않습니다.');target=null;marking=true;return;}
  if(b.hasAttribute('data-check')){const c=config();say(target&&doc.querySelector(target.rowSelector)&&matchGame(textOf(doc.querySelector(target.rowSelector)),c)?'지정한 행의 경기 정보가 일치합니다.':'경기 일치 확인 실패: 목표 버튼을 다시 지정하세요.');return;}
- if(b.hasAttribute('data-arm')){const c=config(),openAt=new Date(q('[name=open]').value).getTime();if(!Number.isFinite(openAt)||openAt<now()||openAt>now()+86400000)throw Error('오픈 시각은 현재 이후 24시간 안으로 지정하세요.');if(!target||access()!=='ready'||!matchGame(textOf(doc.querySelector(target.rowSelector)),c))throw Error('목표 경기와 화면을 먼저 확인하세요.');try{saveSettings();}catch{}noticePending=null;state={phase:'armed',url:win.location.href,openAt,config:c,target};persist();marking=false;navigating=false;tick();}
+ if(b.hasAttribute('data-arm')){const c=config(),openAt=new Date(q('[name=open]').value).getTime();if(!Number.isFinite(openAt)||openAt<now()||openAt>now()+86400000)throw Error('오픈 시각은 현재 이후 24시간 안으로 지정하세요.');if(!target||access()!=='ready'||!matchGame(textOf(doc.querySelector(target.rowSelector)),c))throw Error('목표 경기와 화면을 먼저 확인하세요.');try{saveSettings();}catch{}clearMarker();state={phase:'armed',url:win.location.href,openAt,config:c,target};persist();marking=false;navigating=false;tick();}
  }catch(e){state=null;win.sessionStorage.removeItem(KEY);say(e.message);}});
- const timer=win.setInterval(tick,100);win.addEventListener('pagehide',()=>win.clearInterval(timer),{once:true});if(state)say('저장된 실행을 확인합니다.');return panel;
+ const timer=win.setInterval(tick,100);win.addEventListener('pagehide',()=>{win.clearInterval(timer);clearMarker();},{once:true});if(state)say('저장된 실행을 확인합니다.');return panel;
 }
 return {KEY,validateConfig,matchGame,captureTarget,findTarget,decide,mount};
 });
