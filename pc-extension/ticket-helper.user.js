@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.53
+// @version      0.1.54
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.53";
+globalThis.TICKET_HELPER_VERSION="0.1.54";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -365,7 +365,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   const DIAGNOSTIC_STAGES = Object.freeze([
     'adapter-unsupported', 'date-missing', 'date-disabled', 'session-container-missing',
     'session-ambiguous', 'session-unavailable', 'next-button-missing', 'next-button-ambiguous',
-    'navigation-failed', 'form-field-missing', 'agreement-missing', 'captcha-pending',
+    'navigation-failed', 'login-required', 'form-field-missing', 'agreement-missing', 'captcha-pending',
     'confirmation-blocked', 'site-error', 'unknown'
   ]);
   function actionOk(data = {}) { return { ok: true, ...data }; }
@@ -981,6 +981,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           if (typeof this.onBeforeAdvance === 'function') await this.onBeforeAdvance({ profileId, targetDate, mode, session, fallbackCursor });
           const advanced = await adapter.goNext();
           if (!advanced?.ok) {
+            if(advanced?.stage==='login-required')return this.fail('login-required',advanced.message||'로그인이 필요합니다.');
             this.emit('session-attempt-failed', { session: session.label, diagnosticStage: advanced?.stage || 'navigation-failed' });
             continue;
           }
@@ -1666,6 +1667,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         selectedLabel=session.label;return ok({session:matches[0]});
       },
       async goNext(){
+        if(page.isLoginPage?.())return fail('login-required','네이버 로그인 후 예약 페이지에서 다시 시작해 주세요.');
         if(!dateMatches())return fail('date-missing','requested date changed before NEXT');
         const current=deps.parseNaverSessionDescriptors(page.listSessionDescriptors()).filter(s=>s.label===selectedLabel);
         if(!selectedLabel||current.length!==1||!current[0].available||(typeof page.isSessionSelected==='function'&&!page.isSessionSelected(selectedLabel)))return fail('session-unavailable','selected session changed before NEXT');
@@ -1673,9 +1675,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if(!actions.length) return fail('next-button-missing','다음 button not found');
         if(actions.length>1) return fail('next-button-ambiguous','multiple 다음 buttons found');
         const before=page.currentHref(); page.clickElement(actions[0]);
-        return (await page.waitForNavigation(before))?ok():fail('navigation-failed','다음 did not navigate');
+        const navigated=await page.waitForNavigation(before);
+        if(page.isLoginPage?.())return fail('login-required','네이버 로그인 후 예약 페이지에서 다시 시작해 주세요.');
+        return navigated?ok():fail('navigation-failed','다음 did not navigate');
       },
-      async fillUserInfo(user){if(user?.participants&&!await page.selectParticipants?.(user.participants))return fail('participants-missing','설정한 참여 인원을 선택하지 못했습니다. 직접 확인해 주세요.');return ok();},
+      async fillUserInfo(user){if(page.isLoginPage?.())return fail('login-required','네이버 로그인 후 예약 페이지에서 다시 시작해 주세요.');if(user?.participants&&!await page.selectParticipants?.(user.participants))return fail('participants-missing','설정한 참여 인원을 선택하지 못했습니다. 직접 확인해 주세요.');return ok();},
       async applyAgreements(){ return page.excludeMarketingConsent?.()===false?fail('agreement-missing','마케팅 수신 동의를 해제하지 못했습니다. 직접 확인해 주세요.'):ok(); },
       async captchaState(){ return 'complete'; },
       async continueAfterCaptcha(mode){
@@ -1731,6 +1735,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
     return {
       currentTargetDate,
+      isLoginPage(){try{return new URL(win.location.href).hostname==='nid.naver.com';}catch{return false;}},
       excludeMarketingConsent:()=>deps.clearMarketingConsent(doc,win,options),
       navigateToDate(date,url){win.location.replace(targetUrlForDate(url,date));},
       sessionContainerState(){return listSessionDescriptors().length?'ok':'missing';},
@@ -3133,6 +3138,34 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     try{return new URL(a).href===new URL(b).href}catch{return String(a||'')===String(b||'')}
   }
 
+  function runStatusText(result){
+    const stage=result?.diagnostic?.stage||result?.stage;
+    const text={
+      'login-required':'로그인 필요 · 로그인 후 예약 페이지에서 다시 시작해 주세요.',
+      'date-disabled':'날짜 미오픈 · 오픈 시각과 목표 날짜를 확인해 주세요.',
+      'date-missing':'날짜 선택 실패 · 목표 날짜를 직접 확인해 주세요.',
+      'sessions-not-loaded':'회차 로딩 실패 · 목표 날짜를 확인하고 새로고침해 주세요.',
+      'session-container-missing':'회차 로딩 실패 · 목표 날짜를 확인하고 새로고침해 주세요.',
+      'session-unavailable':'회차 매진 또는 변경 · 회차 우선순위를 확인해 주세요.',
+      'session-ambiguous':'같은 시각의 회차가 여러 개입니다. 직접 선택해 주세요.',
+      'participants-missing':'인원 선택 실패 · 참여 인원을 직접 선택해 주세요.',
+      'form-field-missing':'예약자 입력 실패 · 이름과 연락처를 직접 확인해 주세요.',
+      'agreement-missing':'동의 처리 실패 · 필수 동의와 마케팅 제외를 직접 확인해 주세요.',
+      'navigation-failed':'화면 이동 실패 · 로그인 상태와 선택 회차를 확인해 주세요.',
+      'next-button-missing':'다음 버튼을 찾지 못했습니다. 예약 화면을 직접 확인해 주세요.',
+      'next-missing':'다음 버튼을 찾지 못했습니다. 예약 화면을 직접 확인해 주세요.',
+      'next-button-ambiguous':'다음 버튼이 여러 개입니다. 직접 확인해 주세요.',
+      'cancelled':'실행 중지',
+      'awaiting-captcha':'자동등록방지 인증 대기 · 화면에서 직접 완료해 주세요.',
+      'captcha-pending':'자동등록방지 인증 대기 · 화면에서 직접 완료해 주세요.',
+      'confirmation-blocked':'자동 확정 중단 · 인원과 금액을 확인하고 직접 진행해 주세요.',
+      'ready-to-confirm':'입력 완료 · 직접 최종 확인',
+      'filling-form':'예약 정보 입력 중',
+      'completed':'결제 화면까지 진행 · 예약 완료 여부를 직접 확인해 주세요.',
+      'payment-submitted':'결제 요청 전송 · 결제 결과를 직접 확인해 주세요.'
+    };
+    return text[stage]||(result?.stage==='failed'?'실행 실패 · 예약 화면과 상세 상태를 직접 확인해 주세요.':'대기');
+  }
   function expectedUserscriptResumePage(profile,checkpoint,doc=hostRoot.document,win=hostRoot){
     if(checkpoint?.stage!=='filling-form'&&checkpoint?.stage!=='awaiting-captcha')return true;
     if(profile?.adapterId==='keyescape')return /reservation2\.php$/i.test(win?.location?.pathname||'');
@@ -3237,7 +3270,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.53'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.54'))>0?String(settings.updateRemoteVersion):''};
     let runGeneration=0,activeRun=null,pendingPreparation=null;
     let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
 
@@ -3256,7 +3289,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom','beatphobia'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.53');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.54');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -3385,7 +3418,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
 
     function updateIsSafe(){
-      if(checkpoint||activeRun!==null)return false;
+      if(checkpoint||activeRun!==null||pendingPreparation!==null)return false;
       const url=new URL(hostRoot.location.href);
       if(/reservation1\.php|reservation2\.php|\/request(?:\/|$)|\/reservation\/create/i.test(url.pathname)||['rev.make','rev.make.input'].includes(url.searchParams.get('go'))||!!doc.querySelector('input[name="theme_time_num"]')?.value)return false;
       const selected=selectedProfile();
@@ -3415,7 +3448,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.53');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.54');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
@@ -3495,7 +3528,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const result=await built.machine.run({profileId:selected.id,targetDate:cfg.targetDate,mode:cfg.mode,userProfile:localUser||{},fallbackCursor});
         if(built.generation!==runGeneration)return {stage:'cancelled'};
         const outcome=await settleResult(result,selected,cfg,fallbackCursor,openTrigger,built.machine);
-        if(built.generation===runGeneration&&outcome?.checkpoint){checkpoint=outcome.checkpoint;state.statusText=outcome.result?.diagnostic?.message||({failed:'실행 실패', 'ready-to-confirm':'입력 완료 · 직접 최종 확인', 'awaiting-captcha':'인증 대기'}[outcome.result?.stage]||outcome.result?.stage||'대기');render();}
+        if(built.generation===runGeneration&&outcome?.checkpoint){checkpoint=outcome.checkpoint;state.statusText=runStatusText(outcome.result);render();}
         return outcome;
       }finally{if(activeRun===built.generation)activeRun=null;}
     }
@@ -3540,7 +3573,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }
         if(built.generation!==runGeneration||result?.diagnostic?.stage==='cancelled'){if(activeRun===built.generation)activeRun=null;return {stage:'cancelled'};}
         const outcome=await handleRunResult({result,profiles,state:{...state,...cfg},storage,helpers:deps,navigate:url=>{hostRoot.location.href=url}});
-        checkpoint=outcome.checkpoint;state.statusText=result?.diagnostic?.message||(result?.stage==='ready-to-confirm'?'입력 완료 · 직접 최종 확인':result?.stage||'대기');if(activeRun===built.generation)activeRun=null;render();return outcome;
+        checkpoint=outcome.checkpoint;state.statusText=runStatusText(result);if(activeRun===built.generation)activeRun=null;render();return outcome;
       }
       return execute(selected,cfg,cp.fallbackCursor,cp.openTrigger);
     }
@@ -3742,5 +3775,5 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
     return true;
   }
-  return {claimBoot,deriveFallbackContinuation,handleRunResult,createScheduleObserver,createArmedCheckpoint,createTimingTestCheckpoint,nextArmedAction,scanTargetDateSessions,expectedUserscriptResumePage,renderBootError,detectThemeNameFromPage,detectThemeImageFromPage,detectCurrentPageContext,createProfileFromCurrentPage,selectProfileForPageContext,parseUserscriptMetaVersion,compareVersions,bootTicketHelper};
+  return {runStatusText,claimBoot,deriveFallbackContinuation,handleRunResult,createScheduleObserver,createArmedCheckpoint,createTimingTestCheckpoint,nextArmedAction,scanTargetDateSessions,expectedUserscriptResumePage,renderBootError,detectThemeNameFromPage,detectThemeImageFromPage,detectCurrentPageContext,createProfileFromCurrentPage,selectProfileForPageContext,parseUserscriptMetaVersion,compareVersions,bootTicketHelper};
 });
