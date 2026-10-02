@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.6
+// @version      0.1.7
 // @description  지정한 경기 목록에서 오픈 시각 1회 새로고침 및 예매 진입. 좌석/결제 자동화 없음.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
@@ -65,13 +65,17 @@ function findNoticeConfirmation(doc,visible,panel){
  const found=new Set();
  for(const button of doc.querySelectorAll('button,a,input[type=button],[role=button]')){
   if(panel.contains(button)||!visible(button)||button.disabled||button.matches(':disabled')||button.getAttribute('aria-disabled')==='true'||button.classList.contains('disabled')||compact(button.value||textOf(button))!=='확인')continue;
-  let box=button.parentElement;while(box&&box!==doc.body&&!isNoticeBox(box))box=box.parentElement;
-  if(!box||box===doc.body||box.matches('main,article,section,nav,header,footer')||!visible(box))continue;
-  const text=compact(textOf(box));
-  const titled=Array.from(box.querySelectorAll('*')).some(el=>visible(el)&&el.children.length===0&&compact(textOf(el))==='예매안내');
-  if(text.length>4000||!titled||!text.includes('시야')||!text.includes('관람')||box.querySelector('input,textarea,select,iframe')||/보안문자|인증문자|자동입력방지|대기순번|접속대기|결제동의/.test(text))continue;
-  const controls=Array.from(box.querySelectorAll('button,a,[role=button]')).filter(el=>visible(el)&&compact(textOf(el))==='확인');
-  if(controls.length===1)found.add(button);
+  for(let box=button.parentElement;box&&box!==doc.body;box=box.parentElement){
+   if(!isNoticeBox(box)||box.matches('main,article,section,nav,header,footer')||!visible(box))continue;
+   const text=compact(textOf(box));
+   const titled=Array.from(box.querySelectorAll('*')).some(el=>visible(el)&&el.children.length===0&&compact(textOf(el))==='예매안내');
+   // common_modal_footer has the button but no title/body; inspect its enclosing modal.
+   if(!titled||!text.includes('시야')||!text.includes('관람'))continue;
+   if(text.length>4000||box.querySelector('input,textarea,select,iframe')||/보안문자|인증문자|자동입력방지|대기순번|접속대기|결제동의/.test(text))break;
+   const controls=Array.from(box.querySelectorAll('button,a,[role=button]')).filter(el=>visible(el)&&compact(textOf(el))==='확인');
+   if(controls.length===1)found.add(button);
+   break;
+  }
  }
  return found.size===1?Array.from(found)[0]:null;
 }
@@ -111,7 +115,7 @@ function mount(doc,win,options={}){
 @media(max-width:420px){#th-entry{right:12px;bottom:12px;max-height:calc(100vh - 24px)}#th-entry .th-head{padding:15px 16px}#th-entry [data-content]{padding:16px}#th-entry input{font-size:12px;padding:10px 8px}}
 @media(prefers-reduced-motion:reduce){#th-entry button:active{transform:none}}
 </style>
-<header class="th-head"><div class="th-logo" aria-hidden="true"><svg width="25" height="25" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M6 5.5c4 2 4 11 0 13M18 5.5c-4 2-4 11 0 13M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.3"/></svg></div><div class="th-head-copy"><strong>Ticket Helper</strong><span>BASEBALL · 경기 진입 시험판 0.1.6</span></div><button type="button" data-toggle aria-expanded="true" aria-controls="th-entry-content">접기</button></header>
+<header class="th-head"><div class="th-logo" aria-hidden="true"><svg width="25" height="25" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M6 5.5c4 2 4 11 0 13M18 5.5c-4 2-4 11 0 13M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.3"/></svg></div><div class="th-head-copy"><strong>Ticket Helper</strong><span>BASEBALL · 경기 진입 시험판 0.1.7</span></div><button type="button" data-toggle aria-expanded="true" aria-controls="th-entry-content">접기</button></header>
 <div data-content id="th-entry-content">
 <div class="th-section-title">목표 경기 <span>화면에 나온 팀 이름으로 입력</span></div>
 <div class="th-grid"><label>경기 날짜<input name="date" type="date"></label><label>경기 시작 시간<input name="time" type="time" value="18:30"></label></div>
@@ -119,7 +123,7 @@ function mount(doc,win,options={}){
 <div class="th-open"><label>예매 오픈 시각<input name="open" type="datetime-local" step="1"></label><small>현재 실행 기준: PC 현지 시계</small></div>
 <div class="th-actions"><button type="button" data-mark>① 경기 버튼 지정</button><button type="button" data-arm>② 시작 대기</button><button type="button" data-check>경기 일치 확인</button><button type="button" data-stop>중지</button><button type="button" data-diagnose style="grid-column:1/-1">안내창 진단 · 결과 표시</button></div>
 <div class="th-status-card"><div class="th-status-label"><span class="th-dot" aria-hidden="true"></span>실행 상태</div><p data-status role="status" aria-live="polite">경기 정보를 입력한 뒤 목표 경기 버튼을 지정하세요.</p></div>
-<div class="th-foot"><details><summary>진행 방식과 확인할 사항</summary><small>오픈 시각에 목록 1회 새로고침 → 목표 예매 버튼 1회 클릭 → 일반 예매 안내 1회 확인.<br>대기열·인증·보안 경고에서는 중지합니다. 예약창과 보안문자는 직접 확인하세요. 좌석 선택은 아직 연결되지 않았습니다.<br>이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.</small></details><details><summary>시계 · 자동 업데이트 · v0.1.6</summary><p>PC 현지 시계 기준이며 서버 시각 보정은 없습니다.</p><a href="https://time.navyism.com/?host=www.ticketlink.co.kr" target="_blank" rel="noopener noreferrer">티켓링크 네이비즘 열기 ↗</a><small>Tampermonkey의 자동 업데이트 설정에 따라 새 버전을 받습니다. 새 코드는 다음 페이지 로딩부터 적용됩니다.</small></details></div>
+<div class="th-foot"><details><summary>진행 방식과 확인할 사항</summary><small>오픈 시각에 목록 1회 새로고침 → 목표 예매 버튼 1회 클릭 → 일반 예매 안내 1회 확인.<br>대기열·인증·보안 경고에서는 중지합니다. 예약창과 보안문자는 직접 확인하세요. 좌석 선택은 아직 연결되지 않았습니다.<br>이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.</small></details><details><summary>시계 · 자동 업데이트 · v0.1.7</summary><p>PC 현지 시계 기준이며 서버 시각 보정은 없습니다.</p><a href="https://time.navyism.com/?host=www.ticketlink.co.kr" target="_blank" rel="noopener noreferrer">티켓링크 네이비즘 열기 ↗</a><small>Tampermonkey의 자동 업데이트 설정에 따라 새 버전을 받습니다. 새 코드는 다음 페이지 로딩부터 적용됩니다.</small></details></div>
 </div>
 `;
  doc.body.append(panel);const q=s=>panel.querySelector(s),say=t=>q('[data-status]').textContent=t;let state=null,target=null,marking=false,navigating=false,noticePending=null;
