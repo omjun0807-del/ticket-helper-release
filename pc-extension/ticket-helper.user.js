@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.50
+// @version      0.1.51
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.50";
+globalThis.TICKET_HELPER_VERSION="0.1.51";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1700,6 +1700,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
   function createBrowserNaverPage(doc=document,win=window,options={}){
     const selectors=deps.NAVER_SELECTORS;
+    const checkCancelled=()=>{if(options.isCancelled?.())throw diagError('cancelled','실행이 중지되었습니다.');};
     const textOf=(el)=>String(el?.innerText??el?.textContent??'').replace(/\s+/g,' ').trim();
     const visible=(el)=>{if(!el||typeof el.getBoundingClientRect!=='function')return false;const r=el.getBoundingClientRect(),s=win.getComputedStyle(el);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};
     const actions=(label)=>[...doc.querySelectorAll(selectors.actions)].filter(visible).filter(el=>textOf(el)===label).filter(el=>!(el.disabled||el.getAttribute?.('aria-disabled')==='true'||/disabled|inactive|is_disabled/i.test(String(el.className||''))));
@@ -1735,7 +1736,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       sessionContainerState(){return listSessionDescriptors().length?'ok':'missing';},
       listSessionDescriptors,
       clickElement(el){
+        checkCancelled();
         try { el.scrollIntoView?.({block:'center',inline:'center',behavior:'instant'}); } catch{}
+        checkCancelled();
         try { el.click?.(); } catch{}
       },
       isSessionSelected(label){
@@ -1745,6 +1748,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       async waitForSlotOutcome(label){
         const started=Date.now();
         while(Date.now()-started<2200){
+          checkCancelled();
           if(soldOutToastExists()) return 'sold-out';
           const chosen=listSessionDescriptors().find(d=>deps.parseNaverClock(d.label)?.label===label);
           if(chosen&&(chosen.element.getAttribute('aria-selected')==='true'||chosen.element.getAttribute('aria-pressed')==='true'||/(?:^|\s)(?:selected|is_selected)(?:\s|$)/.test(chosen.element.className)))return 'selected';
@@ -1755,9 +1759,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       selectParticipants:count=>deps.selectParticipantCount(doc,win,count,{isCancelled:options.isCancelled}),
       findExactActions:actions,
       currentHref(){return win.location.href;},
-      async waitForNavigation(before){for(let i=0;i<40;i++){await sleep(50);if(win.location.href!==before||win.location.pathname.includes('/request'))return true;}return false;},
+      async waitForNavigation(before){for(let i=0;i<40;i++){checkCancelled();await sleep(50);checkCancelled();if(win.location.href!==before||win.location.pathname.includes('/request'))return true;}return false;},
       async waitForNpayBoundary(){
         for(let i=0;i<120;i++){
+          checkCancelled();
           const final=[...doc.querySelectorAll(selectors.actions)].filter(visible).some(el=>/^\s*[\d,]+원\s*결제하기\s*$/.test(textOf(el)));
           if(final) return true;
           await sleep(50);
@@ -3226,7 +3231,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.50'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.51'))>0?String(settings.updateRemoteVersion):''};
     let runGeneration=0,activeRun=null;
     let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
 
@@ -3240,7 +3245,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom','beatphobia'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.50');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.51');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -3399,7 +3404,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.50');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.51');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
