@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.4
+// @version      0.1.5
 // @description  지정한 경기 목록에서 오픈 시각 1회 새로고침 및 예매 진입. 좌석/결제 자동화 없음.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
