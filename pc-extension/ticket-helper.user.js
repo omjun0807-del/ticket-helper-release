@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.51
+// @version      0.1.52
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.51";
+globalThis.TICKET_HELPER_VERSION="0.1.52";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1931,6 +1931,12 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   function createTicketStorage(gm) {
     if (!gm || typeof gm.getValue !== 'function' || typeof gm.setValue !== 'function') throw new TypeError('GM storage adapter required');
     const clone=(value)=>{try{return JSON.parse(JSON.stringify(value))}catch{return value}};
+    let checkpointWrites=Promise.resolve();
+    const writeCheckpoint=operation=>{
+      const result=checkpointWrites.then(operation);
+      checkpointWrites=result.catch(()=>{});
+      return result;
+    };
     async function snapshot(reason='auto'){
       const profiles=await gm.getValue(KEYS.profiles,[]);
       const settings=await gm.getValue(KEYS.settings,{});
@@ -1965,8 +1971,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       async getLocalUser(){ return await gm.getValue(KEYS.localUser, null); },
       async setLocalUser(profile){ await gm.setValue(KEYS.localUser, profile || null); },
       async getCheckpoint(){ return await gm.getValue(KEYS.checkpoint, null); },
-      async setCheckpoint(checkpoint){ await gm.setValue(KEYS.checkpoint, checkpoint || null); },
-      async clearCheckpoint(){ if (gm.deleteValue) await gm.deleteValue(KEYS.checkpoint); else await gm.setValue(KEYS.checkpoint, null); },
+      setCheckpoint(checkpoint){const value=clone(checkpoint||null);return writeCheckpoint(()=>gm.setValue(KEYS.checkpoint,value));},
+      clearCheckpoint(){return writeCheckpoint(()=>gm.deleteValue?gm.deleteValue(KEYS.checkpoint):gm.setValue(KEYS.checkpoint,null));},
       async getSettings(){
         const current=await gm.getValue(KEYS.settings,null);
         if(current&&typeof current==='object'&&!Array.isArray(current))return current;
@@ -3231,7 +3237,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.51'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.52'))>0?String(settings.updateRemoteVersion):''};
     let runGeneration=0,activeRun=null;
     let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
 
@@ -3245,7 +3251,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom','beatphobia'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.51');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.52');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -3404,7 +3410,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.51');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.52');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
@@ -3471,6 +3477,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       if(!cfg.skipTargetNavigation&&target&&!sameUrl(hostRoot.location.href,target)){
         const nextState={...state,...cfg,profileId:selected.id};
         await storage.setSettings(nextState);
+        if(entryGeneration!==runGeneration)return {stage:'cancelled'};
         checkpoint=deps.createPersistedCheckpoint({profileId:selected.id,stage:'selecting-date',targetDate:cfg.targetDate,mode:cfg.mode,fallbackCursor,now:Date.now,extra:{autoContinue:true,events:[],openTrigger}});
         await storage.setCheckpoint(checkpoint);
         if(entryGeneration!==runGeneration)return {stage:'cancelled'};
@@ -3535,11 +3542,13 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
     async function armOrExecute(selected,cfg){
       if(!selected||!cfg.targetDate)return null;
+      const generation=runGeneration;
       if(selected.adapterId==='manual'){hostRoot.alert?.('이 사이트는 테마 목록과 공식 예약 링크만 지원합니다. 자동 예약 연동은 실기기 검증 후 추가됩니다.');return {stage:'adapter-unsupported'};}
       if(cfg.bypassOpeningSchedule!==true&&!selected.openingRule){hostRoot.alert?.('오픈 규칙이 확인되지 않았습니다. 선택 테마 수정에서 D-일수와 시각을 입력하거나 지금 연습을 사용해 주세요.');return {stage:'opening-rule-unverified'};}
       const armed=createArmedCheckpoint(selected,{...cfg,fallbackCursor:undefined},deps,Date.now());
       if(!armed)return execute(selected,cfg,undefined,undefined);
       checkpoint=armed;await storage.setCheckpoint(armed);
+      if(generation!==runGeneration)return {stage:'cancelled'};
       const target=targetFor(selected,cfg.targetDate);
       if(target&&!sameUrl(hostRoot.location.href,target)){hostRoot.location.href=target;return {stage:'navigating'};}
       return resumePersisted(armed);
@@ -3554,6 +3563,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
     async function armTimingTest(selected,cfg,delayMs=10000){
       if(!selected||!cfg.targetDate)return null;
+      const generation=runGeneration;
       if(!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME){
         if(!canPracticeOnCurrentPage(selected,cfg)){
           hostRoot.alert?.('10초 동작 테스트는 현재 예약 가능한 날짜의 회차를 먼저 불러온 뒤 사용할 수 있습니다. 실제 티켓팅 준비/실전 실행은 회차 미리보기 없이도 가능합니다.');
@@ -3562,6 +3572,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         clearReload();
         checkpoint=null;
         await storage.clearCheckpoint();
+        if(generation!==runGeneration)return {stage:'cancelled'};
         const testCfg={...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true,skipTargetNavigation:true,trustCurrentPageTheme:true};
         reloadTimer=hostRoot.setTimeout(()=>{
           reloadTimer=null;
@@ -3573,6 +3584,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const armed=createTimingTestCheckpoint(selected,testCfg,deps,Date.now(),delayMs);
       if(!armed)return null;
       checkpoint=armed;await storage.setCheckpoint(armed);
+      if(generation!==runGeneration)return {stage:'cancelled'};
       const target=targetFor(selected,cfg.targetDate);
       if(target&&!sameUrl(hostRoot.location.href,target)){hostRoot.location.href=target;return {stage:'navigating'};}
       scheduleReloadForTrigger(armed.openTrigger);
@@ -3633,9 +3645,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         onAddHour:async (cfg,hour)=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0)return;profiles[i]={...profiles[i],timePriorities:deps.addHourPriority(profiles[i].timePriorities||[],hour)};await storage.setProfiles(profiles);await markSyncDirty();render();},
         onRemoveHour:async (cfg,hour)=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0)return;profiles[i]={...profiles[i],timePriorities:deps.removeHourPriority(profiles[i].timePriorities||[],hour)};await storage.setProfiles(profiles);await markSyncDirty();render();},
         onAddCurrent:async cfg=>{try{const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);const created=createProfileFromCurrentPage({url:hostRoot.location.href,branchName:cfg.newBranchName||ctx.branchName,themeName:cfg.newThemeName||ctx.themeName,daysBefore:Number(cfg.newDaysBefore),openTime:cfg.newOpenTime,imageUrl:ctx.imageUrl},deps);const duplicate=profiles.find(p=>typeof deps.semanticProfileKey==='function'?deps.semanticProfileKey(p)===deps.semanticProfileKey(created):p.id===created.id);if(duplicate&&!hostRoot.confirm?.(`이미 저장된 테마입니다: ${duplicate.themeName}\n현재 페이지 정보로 업데이트할까요?`))return;profiles=typeof deps.upsertProfileByIdentity==='function'?deps.upsertProfileByIdentity(profiles,created):[...profiles,created];const saved=profiles.find(p=>typeof deps.semanticProfileKey==='function'&&deps.semanticProfileKey(p)===deps.semanticProfileKey(created))||profiles.find(p=>p.id===created.id)||created;state.profileId=saved.id;state.siteId=saved.siteId;state.branchId=String(saved.branchId||'');await storage.setProfiles(profiles);await storage.setSettings(state);await markSyncDirty();render();hostRoot.alert?.(`테마 등록 완료: ${saved.themeName}`);}catch(err){hostRoot.alert?.(`테마 등록 실패: ${String(err?.message||err)}`);}},
-        onPrepare:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);return armOrExecute(selected,{...cfg,profileId:selected?.id||cfg.profileId});},
-        onPracticeNow:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const inPlace=canPracticeOnCurrentPage(selected,cfg);return armOrExecute(selected,{...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true,skipTargetNavigation:inPlace,trustCurrentPageTheme:inPlace});},
-        onTimingTest:async cfg=>{await persistConfig(cfg,'prepare');const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const result=await armTimingTest(selected,{...cfg,profileId:selected.id},10000);if(result?.stage==='timing-test-in-place')hostRoot.alert?.('10초 후 현재 불러온 회차에서 선택 → NEXT 흐름을 연습합니다. 미래 날짜 활성화는 실전 오픈 시각에 별도로 처리됩니다.');else if(result?.stage==='timing-test-armed')hostRoot.alert?.('10초 후 오픈 트리거 재개 흐름을 연습합니다.');return result;}
+        onPrepare:async cfg=>{const generation=runGeneration;await persistConfig(cfg,'prepare');if(generation!==runGeneration)return {stage:'cancelled'};const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);return armOrExecute(selected,{...cfg,profileId:selected?.id||cfg.profileId});},
+        onPracticeNow:async cfg=>{const generation=runGeneration;await persistConfig(cfg,'prepare');if(generation!==runGeneration)return {stage:'cancelled'};const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const inPlace=canPracticeOnCurrentPage(selected,cfg);return armOrExecute(selected,{...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true,skipTargetNavigation:inPlace,trustCurrentPageTheme:inPlace});},
+        onTimingTest:async cfg=>{const generation=runGeneration;await persistConfig(cfg,'prepare');if(generation!==runGeneration)return {stage:'cancelled'};const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const result=await armTimingTest(selected,{...cfg,profileId:selected.id},10000);if(result?.stage==='timing-test-in-place')hostRoot.alert?.('10초 후 현재 불러온 회차에서 선택 → NEXT 흐름을 연습합니다. 미래 날짜 활성화는 실전 오픈 시각에 별도로 처리됩니다.');else if(result?.stage==='timing-test-armed')hostRoot.alert?.('10초 후 오픈 트리거 재개 흐름을 연습합니다.');return result;}
       });
       return {profile,schedule};
     },hostRoot);
