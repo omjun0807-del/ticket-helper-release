@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.11
+// @version      0.1.12
 // @description  경기 진입 보조와 안내 자동·직접 확인 비교 기록. 오류창은 읽기만 수행.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
@@ -23,7 +23,7 @@ const recordKey=mode=>mode==='manual'?MANUAL_KEY:KEY;
 const compact=s=>String(s||'').replace(/\s+/g,'');
 const textOf=el=>el.innerText===undefined?el.textContent:el.innerText;
 function read(win,mode='auto'){try{const r=JSON.parse(win.localStorage.getItem(recordKey(mode))||'null');return r&&typeof r.id==='string'&&Number.isFinite(r.bookAt)&&Array.isArray(r.events)?r:null;}catch{return null;}}
-function start(win,at,mode='auto'){if(read(win,mode)?.status==='blocked')throw Error('이전 진단에서 차단이 확인되어 해당 확인 진단을 종료했습니다.');const r={id:at+'-'+Math.random().toString(36).slice(2,10),version:'0.1.11',mode:mode==='manual'?'manual':'auto',path:win.location.pathname,bookAt:at,status:'waiting',events:[{type:'book',ms:0}]};win.localStorage.setItem(recordKey(mode),JSON.stringify(r));return r;}
+function start(win,at,mode='auto'){if(read(win,mode)?.status==='blocked')throw Error('이전 진단에서 차단이 확인되어 해당 확인 진단을 종료했습니다.');const r={id:at+'-'+Math.random().toString(36).slice(2,10),version:'0.1.12',mode:mode==='manual'?'manual':'auto',path:win.location.pathname,bookAt:at,status:'waiting',events:[{type:'book',ms:0}]};win.localStorage.setItem(recordKey(mode),JSON.stringify(r));return r;}
 function append(win,id,type,at,extra={},mode='auto'){
  const r=read(win,mode);if(!r||r.id!==id||!['waiting','confirm-clicked'].includes(r.status)||!Number.isFinite(at))return r;
  if((type==='confirm'||type==='manual-confirm')&&r.status!=='waiting')return r;
@@ -79,7 +79,7 @@ return {KEY,MANUAL_KEY,read,start,append,findConfirmation,observeError,format,fo
 'use strict';
 const Trial=typeof module==='object'&&module.exports?require('./notice-trial'):globalThis.BaseballNoticeTrial;
 const KEY='ticket-helper:baseball-entry:v1', FOLD_KEY=KEY+':folded', SETTINGS_KEY=KEY+':settings';
-const VERSION='0.1.11';
+const VERSION='0.1.12';
 const compact=s=>String(s||'').replace(/\s+/g,'').toUpperCase();
 function validateConfig(c){
  if(!c||!/^\d{4}-\d{2}-\d{2}$/.test(c.date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(c.time))throw Error('경기 날짜와 시간을 확인하세요.');
@@ -156,6 +156,8 @@ function mount(doc,win,options={}){
 #th-entry .th-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:16px}
 #th-entry [data-mark]{background:#f1edff;border-color:#e3dbfa;color:#5941ba}#th-entry [data-arm]{background:#6551d6;border-color:#6551d6;color:white;box-shadow:0 4px 12px #6551d624}#th-entry [data-arm]:hover{background:#5742c8}#th-entry [data-stop]{color:#a64a5e;border-color:#eedfe3;background:#fffafb}
 #th-entry .th-status-card{margin-top:16px;padding:13px 14px;border:1px solid #e8e5f3;border-radius:15px;background:#faf9fe}#th-entry .th-status-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:750;color:#71618f;margin-bottom:7px}#th-entry .th-dot{width:6px;height:6px;border-radius:50%;background:#8065dc}#th-entry [data-status]{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.65;color:#46405f}
+#th-entry [data-diagnostic-result]{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:12px}
+[data-th-entry-notice="manual"]{outline:3px solid #8065dc!important;outline-offset:4px;box-shadow:0 0 0 7px #8065dc26!important}
 #th-entry .th-foot{margin-top:14px;padding-top:11px;border-top:1px solid #eeecf4}#th-entry details{margin-top:7px}#th-entry summary{cursor:pointer;font-size:12px;font-weight:600;color:#726a86;padding:7px 0}#th-entry details small{display:block;padding:3px 0 7px}#th-entry details p{font-size:12px;line-height:1.7;color:#636078;margin:5px 0}#th-entry a{color:#6450cb;text-decoration:underline;text-underline-offset:3px;font-size:12px}
 #th-entry[data-folded=true]{width:auto;overflow:visible;border:0;border-radius:100px;background:transparent;box-shadow:0 8px 26px #4c35a92e}
 #th-entry[data-folded=true] .th-head{padding:0;border:0;background:none}#th-entry[data-folded=true] .th-logo,#th-entry[data-folded=true] .th-head-copy{display:none}#th-entry[data-folded=true] [data-toggle]{border:0;min-height:48px;border-radius:100px;background:#6551d6;color:#fff;padding:12px 22px;font-size:14px}
@@ -168,12 +170,12 @@ function mount(doc,win,options={}){
 <div class="th-grid"><label>경기 날짜<input name="date" type="date"></label><label>경기 시작 시간<input name="time" type="time" value="18:30"></label></div>
 <div class="th-grid"><label>홈팀<input name="home" placeholder="예: LG"></label><label>원정팀<input name="away" placeholder="예: KIA"></label></div>
 <div class="th-open"><label>예매 오픈 시각<input name="open" type="datetime-local" step="1"></label><small>현재 실행 기준: PC 현지 시계</small></div>
-<div class="th-actions"><button type="button" data-mark>① 경기 버튼 지정</button><button type="button" data-arm>② 시작 대기</button><button type="button" data-check>경기 일치 확인</button><button type="button" data-stop>중지</button><button type="button" data-arm-manual style="grid-column:1/-1">안내 직접 확인 비교 시작</button><button type="button" data-arm-trial style="grid-column:1/-1">안내 자동 확인 진단 시작 · 1회</button><button type="button" data-diagnose>안내창 형태 진단</button><button type="button" data-trial-result>자동·직접 확인 비교</button></div>
+<div class="th-actions"><button type="button" data-mark>① 경기 버튼 지정</button><button type="button" data-arm>② 시작 대기</button><button type="button" data-check>경기 일치 확인</button><button type="button" data-stop>중지</button></div>
 <div class="th-status-card"><div class="th-status-label"><span class="th-dot" aria-hidden="true"></span>실행 상태</div><p data-status role="status" aria-live="polite">경기 정보를 입력한 뒤 목표 경기 버튼을 지정하세요.</p></div>
-<div class="th-foot"><details><summary>진행 방식과 확인할 사항</summary><small>오픈 시각에 목록 1회 새로고침 → 목표 예매 버튼 자동 클릭 1회 → 기본은 안내 직접 확인.<br>직접 확인 비교는 사용자가 누른 안내 클릭만 관찰합니다. 자동 확인 진단은 별도 선택 시 1회이며, 차단 기록이 있으면 재실행하지 않습니다.<br>대기열·인증·보안 경고에서는 중지합니다. 예약창과 보안문자는 직접 확인하세요. 좌석 선택은 아직 연결되지 않았습니다.<br>이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.</small></details><details><summary>시계 · 자동 업데이트 · v${VERSION}</summary><p>PC 현지 시계 기준이며 서버 시각 보정은 없습니다.</p><a href="https://time.navyism.com/?host=www.ticketlink.co.kr" target="_blank" rel="noopener noreferrer">티켓링크 네이비즘 열기 ↗</a><small>Tampermonkey의 자동 업데이트 설정에 따라 새 버전을 받습니다. 새 코드는 다음 페이지 로딩부터 적용됩니다.</small></details></div>
+<div class="th-foot"><details data-diagnostics><summary>안내 진단 · 비교 기록</summary><small>기존 비교 기록을 보거나 별도 진단을 선택할 때 여세요.</small><div class="th-actions"><button type="button" data-arm-manual style="grid-column:1/-1">안내 직접 확인 비교 시작</button><button type="button" data-arm-trial style="grid-column:1/-1">안내 자동 확인 진단 시작 · 1회</button><button type="button" data-diagnose>안내창 형태 진단</button><button type="button" data-trial-result>자동·직접 확인 비교</button></div><p data-diagnostic-result>‘자동·직접 확인 비교’를 누르면 저장된 기록을 표시합니다.</p></details><details><summary>진행 방식과 확인할 사항</summary><small>오픈 시각에 목록 1회 새로고침 → 목표 예매 버튼 자동 클릭 1회 → 기본은 강조한 안내 확인 버튼 직접 클릭.<br>직접 확인 비교는 사용자가 누른 안내 클릭만 관찰합니다. 자동 확인 진단은 별도 선택 시 1회이며, 차단 기록이 있으면 재실행하지 않습니다.<br>대기열·인증·보안 경고에서는 중지합니다. 예약창과 보안문자는 직접 확인하세요. 좌석 선택은 아직 연결되지 않았습니다.<br>이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.</small></details><details><summary>시계 · 자동 업데이트 · v${VERSION}</summary><p>PC 현지 시계 기준이며 서버 시각 보정은 없습니다.</p><a href="https://time.navyism.com/?host=www.ticketlink.co.kr" target="_blank" rel="noopener noreferrer">티켓링크 네이비즘 열기 ↗</a><small>Tampermonkey의 자동 업데이트 설정에 따라 새 버전을 받습니다. 새 코드는 다음 페이지 로딩부터 적용됩니다.</small></details></div>
 </div>
 `;
- doc.body.append(panel);const q=s=>panel.querySelector(s),say=t=>q('[data-status]').textContent=t;let state=null,target=null,marking=false,navigating=false,pendingTrial=null,activeTrialId=null,activeTrialMode='auto';
+ doc.body.append(panel);const q=s=>panel.querySelector(s),say=t=>q('[data-status]').textContent=t,report=t=>q('[data-diagnostic-result]').textContent=t;let state=null,target=null,marking=false,navigating=false,pendingTrial=null,activeTrialId=null,activeTrialMode='auto',pendingNotice=null,hintedNotice=null;
  function fold(value){panel.dataset.folded=String(value);q('[data-content]').hidden=value;q('[data-toggle]').textContent=value?'야구 헬퍼 열기':'접기';q('[data-toggle]').setAttribute('aria-expanded',String(!value));try{win.sessionStorage.setItem(FOLD_KEY,String(value));}catch{}}
  try{fold(win.sessionStorage.getItem(FOLD_KEY)==='true');}catch{}
  const fields=['date','time','home','away','open'];
@@ -187,37 +189,54 @@ function mount(doc,win,options={}){
  if(/보안문자를입력|자동입력방지문자를입력|인증문자를입력/.test(text)||Array.from(doc.querySelectorAll('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],input[type=password],input[name*=captcha i],input[id*=captcha i],input[aria-label*=보안문자]')).some(visible))return 'captcha';
  return /^\/sports\//.test(win.location.pathname)&&target&&doc.querySelector(target.rowSelector)&&visible(doc.querySelector(target.rowSelector))?'ready':'unknown';
  }
- function stop(message){if(pendingTrial){try{Trial.append(win,pendingTrial.id,'stop',now(),{},pendingTrial.mode);}catch{}pendingTrial=null;}state=null;marking=false;navigating=false;win.sessionStorage.removeItem(KEY);say(message);}
+ function clearHint(){if(hintedNotice?.getAttribute('data-th-entry-notice')==='manual')hintedNotice.removeAttribute('data-th-entry-notice');hintedNotice=null;}
+ function endNotice(){clearHint();pendingNotice=null;}
+ function watchNotice(){
+  if(!pendingNotice)return;
+  if(now()>pendingNotice.until||win.location.href!==pendingNotice.url||['blocked','captcha','queue'].includes(access())){endNotice();say('안내 확인 보조를 종료했습니다. 현재 화면은 직접 확인하세요.');return;}
+  const confirmation=Trial.findConfirmation(doc,visible,panel);
+  if(confirmation===hintedNotice)return;
+  clearHint();
+  if(confirmation){hintedNotice=confirmation;confirmation.setAttribute('data-th-entry-notice','manual');say('예매 안내의 강조된 확인 버튼을 직접 눌러주세요.');}
+  else say('안내 확인은 직접 진행하세요. 현재 안내 버튼을 확인하고 있습니다.');
+ }
+ function stop(message){endNotice();if(pendingTrial){try{Trial.append(win,pendingTrial.id,'stop',now(),{},pendingTrial.mode);report(Trial.formatComparison(win));}catch{}pendingTrial=null;}state=null;marking=false;navigating=false;win.sessionStorage.removeItem(KEY);say(message);}
  function persist(){win.sessionStorage.setItem(KEY,JSON.stringify(state));}
  try{const saved=JSON.parse(win.sessionStorage.getItem(KEY)||'null');if(saved){validateConfig(saved.config);if(typeof saved.target?.rowSelector!=='string'||!Number.isFinite(saved.openAt))throw Error('saved target');state=saved;target=saved.target;for(const k of ['date','time','home','away'])q(`[name=${k}]`).value=saved.config[k];const at=new Date(saved.openAt),pad=n=>String(n).padStart(2,'0');q('[name=open]').value=`${at.getFullYear()}-${pad(at.getMonth()+1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;try{saveSettings();}catch{}}}catch{win.sessionStorage.removeItem(KEY);state=null;}
  function pendingRecord(){
   if(!pendingTrial)return null;
   const pending=pendingTrial,record=Trial.read(win,pending.mode),status=access();
-  if(!record||record.id!==pending.id||record.status!=='waiting'){pendingTrial=null;say(Trial.format(win,pending.mode));return null;}
-  if(now()>pending.until||win.location.href!==pending.url||['blocked','captcha','queue'].includes(status)){pendingTrial=null;Trial.append(win,pending.id,now()>pending.until?'timeout':'guard',now(),{},pending.mode);say(Trial.format(win,pending.mode));return null;}
+  if(!record||record.id!==pending.id||record.status!=='waiting'){pendingTrial=null;endNotice();report(Trial.formatComparison(win));say(record?.id===pending.id&&record.status==='blocked'?'확인 진단에서 오류가 기록되었습니다. 열린 오류창과 진단 기록을 확인하세요.':'확인 진단이 종료되었습니다. 진단 메뉴에서 기록을 확인하세요.');return null;}
+  if(now()>pending.until||win.location.href!==pending.url||['blocked','captcha','queue'].includes(status)){pendingTrial=null;endNotice();Trial.append(win,pending.id,now()>pending.until?'timeout':'guard',now(),{},pending.mode);report(Trial.formatComparison(win));say('확인 진단을 중지했습니다. 현재 화면은 직접 확인하세요.');return null;}
   return record;
  }
  function tick(){
+ watchNotice();
  if(pendingTrial){
   try{
    const pending=pendingTrial;if(!pendingRecord())return;
    const confirmation=Trial.findConfirmation(doc,visible,panel);if(!confirmation)return;
    Trial.append(win,pending.id,'seen',now(),{},pending.mode);
-   if(pending.mode==='manual'){say(Trial.format(win,'manual')+'\n안내 확인은 직접 눌러주세요.');return;}
+   if(pending.mode==='manual'){report(Trial.formatComparison(win));say('예매 안내의 강조된 확인 버튼을 직접 눌러주세요. 클릭 기록만 관찰합니다.');return;}
    const claimed=Trial.append(win,pending.id,'confirm',now());pendingTrial=null;
    if(claimed?.id!==pending.id||claimed.status!=='confirm-clicked')return;
    confirmation.addEventListener('click',e=>{try{Trial.append(win,pending.id,'confirm-event',now(),{isTrusted:e.isTrusted,activationActive:win.navigator.userActivation?.isActive??null});}catch{}},{capture:true,once:true});
-   confirmation.click();say(Trial.format(win));return;
-  }catch{pendingTrial=null;say('진단 기록 저장에 실패하여 확인 진단을 중지했습니다.');return;}
+   confirmation.click();report(Trial.formatComparison(win));say('안내 자동 확인 진단 1회를 실행했습니다. 열린 창과 진단 기록을 확인하세요.');return;
+  }catch{pendingTrial=null;endNotice();say('진단 기록 저장에 실패하여 확인 진단을 중지했습니다.');return;}
  }
  if(!state||navigating)return;try{const status=access();if(state.phase==='reloaded'&&status==='unknown'&&win.location.href===state.url&&now()>=state.openAt&&now()<=state.openAt+30000){say('경기 목록이 표시되기를 기다립니다. 추가 새로고침은 하지 않습니다.');return;}const button=findTarget(doc,target,state.config,visible),action=decide(state,{now:now(),url:win.location.href,access:status,targetReady:!!button});
  if(action==='stop'){stop(status==='queue'?'대기열 감지: 창을 유지하고 기다려 주세요.':status==='blocked'?'보안 경고: 동작을 중지했습니다.':status==='captcha'?'로그인·인증은 직접 진행하세요.':'화면·기한·경기 확인 실패로 중지했습니다.');return;}
  if(action==='wait'){say(now()<state.openAt?`오픈까지 ${Math.max(0,Math.ceil((state.openAt-now())/1000))}초 · 이 탭을 앞에 두세요.`:'새로고침 완료 · 목표 예매 버튼 활성화 대기 중');return;}
  if(action==='reload'){state.phase='reloaded';persist();navigating=true;say('목록을 한 번 새로고침합니다.');reload();return;}
- if(action==='click'){const mode=state.noticeManual===true?'manual':'auto',trial=state.noticeTrial===true||state.noticeManual===true?Trial.start(win,now(),mode):null;state.phase='clicked';persist();state=null;win.sessionStorage.removeItem(KEY);if(trial){activeTrialId=trial.id;activeTrialMode=mode;pendingTrial={id:trial.id,mode,url:win.location.href,until:now()+30000};button.addEventListener('click',e=>{try{Trial.append(win,trial.id,'book-event',now(),{isTrusted:e.isTrusted,activationActive:win.navigator.userActivation?.isActive??null},mode);}catch{}},{capture:true,once:true});}say(trial?(mode==='manual'?'목표 예매 버튼 클릭 · 안내 확인은 직접 눌러주세요. 클릭 기록만 관찰합니다.':'목표 예매 버튼 클릭 · 안내 자동 확인 진단 1회 대기 중'):'목표 예매 버튼을 한 번 클릭했습니다. 예매 안내의 확인은 직접 눌러주세요.');button.click();}
+ if(action==='click'){const mode=state.noticeManual===true?'manual':'auto',trial=state.noticeTrial===true||state.noticeManual===true?Trial.start(win,now(),mode):null,manualNotice=state.noticeTrial!==true||mode==='manual';state.phase='clicked';persist();state=null;win.sessionStorage.removeItem(KEY);if(manualNotice)pendingNotice={url:win.location.href,until:now()+30000};if(trial){activeTrialId=trial.id;activeTrialMode=mode;pendingTrial={id:trial.id,mode,url:win.location.href,until:now()+30000};button.addEventListener('click',e=>{try{Trial.append(win,trial.id,'book-event',now(),{isTrusted:e.isTrusted,activationActive:win.navigator.userActivation?.isActive??null},mode);}catch{}},{capture:true,once:true});}say(trial?(mode==='manual'?'목표 예매 버튼 클릭 · 안내 확인은 직접 눌러주세요. 클릭 기록만 관찰합니다.':'목표 예매 버튼 클릭 · 안내 자동 확인 진단 1회 대기 중'):'목표 예매 버튼을 한 번 클릭했습니다. 예매 안내의 확인은 직접 눌러주세요.');button.click();}
  }catch(e){try{stop('중지: '+e.message);}catch{state=null;say('저장소 접근 실패로 중지했습니다.');}}}
  panel.entryTick=tick;
  doc.addEventListener('click',event=>{
+  if(pendingNotice&&!marking&&!panel.contains(event.target)){
+   watchNotice();
+   const confirmation=pendingNotice&&Trial.findConfirmation(doc,visible,panel);
+   if(confirmation?.contains(event.target)){endNotice();say('안내 확인을 눌렀습니다. 열린 예약창을 직접 확인하세요.');}
+  }
   if(pendingTrial?.mode!=='manual'||marking||panel.contains(event.target))return;
   try{
    const pending=pendingTrial;if(!pendingRecord())return;
@@ -225,22 +244,22 @@ function mount(doc,win,options={}){
    Trial.append(win,pending.id,'seen',now(),{},'manual');pendingTrial=null;
    const claimed=Trial.append(win,pending.id,'manual-confirm',now(),{},'manual');
    if(claimed?.id===pending.id&&claimed.status==='confirm-clicked')Trial.append(win,pending.id,'confirm-event',now(),{isTrusted:event.isTrusted,activationActive:win.navigator.userActivation?.isActive??null},'manual');
-   say(Trial.format(win,'manual'));
-  }catch{pendingTrial=null;say('직접 확인 기록에 실패했습니다. 클릭 자체는 변경하지 않았습니다.');}
+   report(Trial.formatComparison(win));say('직접 확인 클릭을 기록했습니다. 열린 예약창과 진단 기록을 확인하세요.');
+  }catch{pendingTrial=null;endNotice();say('직접 확인 기록에 실패했습니다. 클릭 자체는 변경하지 않았습니다.');}
  },true);
  doc.addEventListener('click',event=>{if(!marking||panel.contains(event.target))return;event.preventDefault();event.stopImmediatePropagation();try{target=captureTarget(event.target,config(),doc,visible);marking=false;say('지정한 경기:\n'+target.label+'\n입력이 맞으면 시작 대기를 누르세요.');}catch(e){marking=false;say(e.message);}},true);
  panel.addEventListener('input',()=>{target=null;stop('설정이 바뀌었습니다. 목표 버튼을 다시 지정하세요.');try{saveSettings();}catch{say('설정 저장 실패: 브라우저 저장소를 확인하세요. 실행은 중지했습니다.');}});
  panel.addEventListener('click',event=>{const b=event.target.closest('button');if(!b)return;try{
  if(b.hasAttribute('data-toggle')){fold(panel.dataset.folded!=='true');return;}
- if(b.hasAttribute('data-trial-result')){say(Trial.formatComparison(win));return;}
- if(b.hasAttribute('data-diagnose')){stop('진단을 위해 실행을 중지했습니다.');say(noticeDiagnostic(doc,visible,panel));return;}
+ if(b.hasAttribute('data-trial-result')){report(Trial.formatComparison(win));return;}
+ if(b.hasAttribute('data-diagnose')){stop('진단을 위해 실행을 중지했습니다. 결과는 진단 메뉴에서 확인하세요.');report(noticeDiagnostic(doc,visible,panel));return;}
  if(b.hasAttribute('data-stop')){stop('사용자가 중지했습니다.');return;}
  if(b.hasAttribute('data-mark')){config();stop('목표 경기의 예매 또는 오픈 예정 버튼을 클릭하세요. 이 클릭은 예매를 진행하지 않습니다.');target=null;marking=true;return;}
  if(b.hasAttribute('data-check')){const c=config();say(target&&doc.querySelector(target.rowSelector)&&matchGame(textOf(doc.querySelector(target.rowSelector)),c)?'지정한 행의 경기 정보가 일치합니다.':'경기 일치 확인 실패: 목표 버튼을 다시 지정하세요.');return;}
- if(b.hasAttribute('data-arm')||b.hasAttribute('data-arm-trial')||b.hasAttribute('data-arm-manual')){const c=config(),openAt=new Date(q('[name=open]').value).getTime();if(!Number.isFinite(openAt)||openAt<now()||openAt>now()+86400000)throw Error('오픈 시각은 현재 이후 24시간 안으로 지정하세요.');if(!target||access()!=='ready'||!matchGame(textOf(doc.querySelector(target.rowSelector)),c))throw Error('목표 경기와 화면을 먼저 확인하세요.');const noticeTrial=b.hasAttribute('data-arm-trial'),noticeManual=b.hasAttribute('data-arm-manual');if((noticeTrial||noticeManual)&&Trial.read(win,noticeManual?'manual':'auto')?.status==='blocked')throw Error('차단 기록이 있어 해당 확인 진단을 종료했습니다.');if(pendingTrial)throw Error('확인 진단이 진행 중입니다. 중지 후 설정하세요.');try{saveSettings();}catch{}state={phase:'armed',url:win.location.href,openAt,config:c,target,noticeTrial,noticeManual};persist();marking=false;navigating=false;tick();}
+ if(b.hasAttribute('data-arm')||b.hasAttribute('data-arm-trial')||b.hasAttribute('data-arm-manual')){const c=config(),openAt=new Date(q('[name=open]').value).getTime();if(!Number.isFinite(openAt)||openAt<now()||openAt>now()+86400000)throw Error('오픈 시각은 현재 이후 24시간 안으로 지정하세요.');if(!target||access()!=='ready'||!matchGame(textOf(doc.querySelector(target.rowSelector)),c))throw Error('목표 경기와 화면을 먼저 확인하세요.');const noticeTrial=b.hasAttribute('data-arm-trial'),noticeManual=b.hasAttribute('data-arm-manual');if((noticeTrial||noticeManual)&&Trial.read(win,noticeManual?'manual':'auto')?.status==='blocked')throw Error('차단 기록이 있어 해당 확인 진단을 종료했습니다.');if(pendingTrial)throw Error('확인 진단이 진행 중입니다. 중지 후 설정하세요.');endNotice();try{saveSettings();}catch{}state={phase:'armed',url:win.location.href,openAt,config:c,target,noticeTrial,noticeManual};persist();marking=false;navigating=false;tick();}
  }catch(e){state=null;win.sessionStorage.removeItem(KEY);say(e.message);}});
- win.addEventListener('storage',e=>{if(e.key===(activeTrialMode==='manual'?Trial.MANUAL_KEY:Trial.KEY)&&Trial.read(win,activeTrialMode)?.id===activeTrialId)say(Trial.formatComparison(win));});
- const timer=win.setInterval(tick,100);win.addEventListener('pagehide',()=>{win.clearInterval(timer);if(pendingTrial){try{Trial.append(win,pendingTrial.id,'stop',now(),{},pendingTrial.mode);}catch{}pendingTrial=null;}},{once:true});if(state)say('저장된 실행을 확인합니다.');return panel;
+ win.addEventListener('storage',e=>{const record=Trial.read(win,activeTrialMode);if(e.key===(activeTrialMode==='manual'?Trial.MANUAL_KEY:Trial.KEY)&&record?.id===activeTrialId){report(Trial.formatComparison(win));say(record.status==='blocked'?'확인 진단에서 오류가 기록되었습니다. 열린 오류창과 진단 기록을 확인하세요.':'확인 진단 기록이 갱신되었습니다. 열린 창과 진단 메뉴를 확인하세요.');}});
+ const timer=win.setInterval(tick,100);win.addEventListener('pagehide',()=>{win.clearInterval(timer);endNotice();if(pendingTrial){try{Trial.append(win,pendingTrial.id,'stop',now(),{},pendingTrial.mode);}catch{}pendingTrial=null;}},{once:true});if(state)say('저장된 실행을 확인합니다.');return panel;
 }
 return {KEY,validateConfig,matchGame,captureTarget,findTarget,decide,mount};
 });
