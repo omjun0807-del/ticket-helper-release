@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.14
+// @version      0.1.15
 // @description  티켓링크·NOL 경기 진입 보조. 안내 비교 진단은 티켓링크만 지원.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
@@ -24,7 +24,7 @@ const recordKey=mode=>mode==='manual'?MANUAL_KEY:KEY;
 const compact=s=>String(s||'').replace(/\s+/g,'');
 const textOf=el=>el.innerText===undefined?el.textContent:el.innerText;
 function read(win,mode='auto'){try{const r=JSON.parse(win.localStorage.getItem(recordKey(mode))||'null');return r&&typeof r.id==='string'&&Number.isFinite(r.bookAt)&&Array.isArray(r.events)?r:null;}catch{return null;}}
-function start(win,at,mode='auto'){if(read(win,mode)?.status==='blocked')throw Error('이전 진단에서 차단이 확인되어 해당 확인 진단을 종료했습니다.');const r={id:at+'-'+Math.random().toString(36).slice(2,10),version:'0.1.14',mode:mode==='manual'?'manual':'auto',path:win.location.pathname,bookAt:at,status:'waiting',events:[{type:'book',ms:0}]};win.localStorage.setItem(recordKey(mode),JSON.stringify(r));return r;}
+function start(win,at,mode='auto'){if(read(win,mode)?.status==='blocked')throw Error('이전 진단에서 차단이 확인되어 해당 확인 진단을 종료했습니다.');const r={id:at+'-'+Math.random().toString(36).slice(2,10),version:'0.1.15',mode:mode==='manual'?'manual':'auto',path:win.location.pathname,bookAt:at,status:'waiting',events:[{type:'book',ms:0}]};win.localStorage.setItem(recordKey(mode),JSON.stringify(r));return r;}
 function append(win,id,type,at,extra={},mode='auto'){
  const r=read(win,mode);if(!r||r.id!==id||!['waiting','confirm-clicked'].includes(r.status)||!Number.isFinite(at))return r;
  if((type==='confirm'||type==='manual-confirm')&&r.status!=='waiting')return r;
@@ -80,7 +80,7 @@ return {KEY,MANUAL_KEY,read,start,append,findConfirmation,observeError,format,fo
 'use strict';
 const Trial=typeof module==='object'&&module.exports?require('./notice-trial'):globalThis.BaseballNoticeTrial;
 const KEY='ticket-helper:baseball-entry:v1', NOL_KEY='ticket-helper:baseball-nol-entry:v1';
-const VERSION='0.1.14';
+const VERSION='0.1.15';
 const compact=s=>String(s||'').replace(/\s+/g,'').toUpperCase();
 function validateConfig(c){
  if(!c||!/^\d{4}-\d{2}-\d{2}$/.test(c.date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(c.time))throw Error('경기 날짜와 시간을 확인하세요.');
@@ -127,9 +127,9 @@ function noticeDiagnostic(doc,visible,panel){
  if(!controls.length)lines.push('확인 버튼을 현재 문서에서 찾지 못했습니다. 별도 창 또는 iframe 여부를 확인해야 합니다.');
  return lines.join('\n');
 }
-function decide(state,{now,url,access,targetReady}){
+function decide(state,{now,url,access,targetReady,reloadAtOpen=true}){
  if(!state||!['armed','reloaded'].includes(state.phase)||!Number.isFinite(state.openAt)||!Number.isFinite(now)||url!==state.url||access!=='ready'||now>state.openAt+30000)return 'stop';
- if(now<state.openAt)return 'wait';if(state.phase==='armed')return 'reload';return targetReady?'click':'wait';
+ if(now<state.openAt)return 'wait';if(state.phase==='armed'&&reloadAtOpen)return 'reload';return targetReady?'click':'wait';
 }
 function mount(doc,win,options={}){
  const nol=options.provider==='nol',runKey=nol?NOL_KEY:KEY,foldKey=runKey+':folded',settingsKey=runKey+':settings',version=VERSION;
@@ -184,7 +184,7 @@ function mount(doc,win,options={}){
   q('.th-head-copy span').textContent='NOL · 경기 진입 준비판 '+version+' · WC 실제 화면 미검증';
   q('[data-diagnostics]').remove();
   const details=q('.th-foot').querySelectorAll('details');
-  details[0].querySelector('small').textContent='오픈 시각에 목록 1회 새로고침 → 지정한 경기의 예매 버튼 자동 클릭 1회. 대기 화면과 열린 예매창은 직접 확인하세요. 안내 확인·보안문자·좌석 선택은 직접 진행합니다. WC 경기 페이지가 공개되면 실제 날짜·시간·두 팀을 다시 확인하고 지정하세요. PC 현지 시계 기준이며 이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.';
+  details[0].querySelector('small').textContent='새로고침 없이 대기 → 오픈 시각 이후 지정한 경기의 예매 버튼이 활성화되면 자동 클릭 1회. 대기 화면과 열린 예매창은 직접 확인하세요. 안내 확인·보안문자·좌석 선택은 직접 진행합니다. WC 경기 페이지가 공개되면 실제 날짜·시간·두 팀을 다시 확인하고 지정하세요. PC 현지 시계 기준이며 이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.';
   details[1].querySelector('a').href='https://time.navyism.com/?host=nol.yanolja.com';details[1].querySelector('a').textContent='NOL 네이비즘 열기 ↗';
  }
  function fold(value){panel.dataset.folded=String(value);q('[data-content]').hidden=value;q('[data-toggle]').textContent=value?'야구 헬퍼 열기':'접기';q('[data-toggle]').setAttribute('aria-expanded',String(!value));try{win.sessionStorage.setItem(foldKey,String(value));}catch{}}
@@ -235,9 +235,9 @@ function mount(doc,win,options={}){
    confirmation.click();report(Trial.formatComparison(win));say('안내 자동 확인 진단 1회를 실행했습니다. 열린 창과 진단 기록을 확인하세요.');return;
   }catch{pendingTrial=null;endNotice();say('진단 기록 저장에 실패하여 확인 진단을 중지했습니다.');return;}
  }
- if(!state||navigating)return;try{const status=access();if(state.phase==='reloaded'&&status==='unknown'&&win.location.href===state.url&&now()>=state.openAt&&now()<=state.openAt+30000){say('경기 목록이 표시되기를 기다립니다. 추가 새로고침은 하지 않습니다.');return;}const button=findTarget(doc,target,state.config,visible,nol),action=decide(state,{now:now(),url:win.location.href,access:status,targetReady:!!button});
+ if(!state||navigating)return;try{const status=access();if(state.phase==='reloaded'&&status==='unknown'&&win.location.href===state.url&&now()>=state.openAt&&now()<=state.openAt+30000){say('경기 목록이 표시되기를 기다립니다. 추가 새로고침은 하지 않습니다.');return;}const button=findTarget(doc,target,state.config,visible,nol),action=decide(state,{now:now(),url:win.location.href,access:status,targetReady:!!button,reloadAtOpen:!nol});
  if(action==='stop'){stop(status==='queue'?'대기열 감지: 창을 유지하고 기다려 주세요.':status==='blocked'?'보안 경고: 동작을 중지했습니다.':status==='captcha'?'로그인·인증은 직접 진행하세요.':'화면·기한·경기 확인 실패로 중지했습니다.');return;}
- if(action==='wait'){say(now()<state.openAt?`오픈까지 ${Math.max(0,Math.ceil((state.openAt-now())/1000))}초 · 이 탭을 앞에 두세요.`:'새로고침 완료 · 목표 예매 버튼 활성화 대기 중');return;}
+ if(action==='wait'){say(now()<state.openAt?`오픈까지 ${Math.max(0,Math.ceil((state.openAt-now())/1000))}초 · 이 탭을 앞에 두세요.`:(nol?'새로고침 없이 목표 예매 버튼 활성화 대기 중':'새로고침 완료 · 목표 예매 버튼 활성화 대기 중'));return;}
  if(action==='reload'){state.phase='reloaded';persist();navigating=true;say('목록을 한 번 새로고침합니다.');reload();return;}
  if(action==='click'){const mode=state.noticeManual===true?'manual':'auto',trial=!nol&&(state.noticeTrial===true||state.noticeManual===true)?Trial.start(win,now(),mode):null,manualNotice=!nol&&(state.noticeTrial!==true||mode==='manual');state.phase='clicked';persist();state=null;win.sessionStorage.removeItem(runKey);if(manualNotice)pendingNotice={url:win.location.href,until:now()+30000};if(trial){activeTrialId=trial.id;activeTrialMode=mode;pendingTrial={id:trial.id,mode,url:win.location.href,until:now()+30000};button.addEventListener('click',e=>{try{Trial.append(win,trial.id,'book-event',now(),{isTrusted:e.isTrusted,activationActive:win.navigator.userActivation?.isActive??null},mode);}catch{}},{capture:true,once:true});}say(trial?(mode==='manual'?'목표 예매 버튼 클릭 · 안내 확인은 직접 눌러주세요. 클릭 기록만 관찰합니다.':'목표 예매 버튼 클릭 · 안내 자동 확인 진단 1회 대기 중'):(nol?'목표 예매 버튼을 한 번 클릭했습니다. 열린 대기 화면·예매창에서 안내 확인과 보안문자는 직접 진행하세요.':'목표 예매 버튼을 한 번 클릭했습니다. 예매 안내의 확인은 직접 눌러주세요.'));button.click();}
  }catch(e){try{stop('중지: '+e.message);}catch{state=null;say('저장소 접근 실패로 중지했습니다.');}}}
