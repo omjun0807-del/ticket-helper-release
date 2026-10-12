@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.13
-// @description  경기 진입 보조와 안내 자동·직접 확인 비교 기록. 오류창은 읽기만 수행.
+// @version      0.1.14
+// @description  티켓링크·NOL 경기 진입 보조. 안내 비교 진단은 티켓링크만 지원.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
 // @match        https://www.ticketlink.co.kr/error/popup/*
 // @match        https://ticketlink.co.kr/error/popup/*
+// @match        https://nol.yanolja.com/ticket/genre/sports*
 // @updateURL    https://raw.githubusercontent.com/omjun0807-del/ticket-helper-release/main/baseball/ticketlink-entry.meta.js
 // @downloadURL  https://raw.githubusercontent.com/omjun0807-del/ticket-helper-release/main/baseball/ticketlink-entry.user.js
 // @run-at       document-idle
@@ -23,7 +24,7 @@ const recordKey=mode=>mode==='manual'?MANUAL_KEY:KEY;
 const compact=s=>String(s||'').replace(/\s+/g,'');
 const textOf=el=>el.innerText===undefined?el.textContent:el.innerText;
 function read(win,mode='auto'){try{const r=JSON.parse(win.localStorage.getItem(recordKey(mode))||'null');return r&&typeof r.id==='string'&&Number.isFinite(r.bookAt)&&Array.isArray(r.events)?r:null;}catch{return null;}}
-function start(win,at,mode='auto'){if(read(win,mode)?.status==='blocked')throw Error('이전 진단에서 차단이 확인되어 해당 확인 진단을 종료했습니다.');const r={id:at+'-'+Math.random().toString(36).slice(2,10),version:'0.1.13',mode:mode==='manual'?'manual':'auto',path:win.location.pathname,bookAt:at,status:'waiting',events:[{type:'book',ms:0}]};win.localStorage.setItem(recordKey(mode),JSON.stringify(r));return r;}
+function start(win,at,mode='auto'){if(read(win,mode)?.status==='blocked')throw Error('이전 진단에서 차단이 확인되어 해당 확인 진단을 종료했습니다.');const r={id:at+'-'+Math.random().toString(36).slice(2,10),version:'0.1.14',mode:mode==='manual'?'manual':'auto',path:win.location.pathname,bookAt:at,status:'waiting',events:[{type:'book',ms:0}]};win.localStorage.setItem(recordKey(mode),JSON.stringify(r));return r;}
 function append(win,id,type,at,extra={},mode='auto'){
  const r=read(win,mode);if(!r||r.id!==id||!['waiting','confirm-clicked'].includes(r.status)||!Number.isFinite(at))return r;
  if((type==='confirm'||type==='manual-confirm')&&r.status!=='waiting')return r;
@@ -79,7 +80,7 @@ return {KEY,MANUAL_KEY,read,start,append,findConfirmation,observeError,format,fo
 'use strict';
 const Trial=typeof module==='object'&&module.exports?require('./notice-trial'):globalThis.BaseballNoticeTrial;
 const KEY='ticket-helper:baseball-entry:v1', NOL_KEY='ticket-helper:baseball-nol-entry:v1';
-const VERSION='0.1.13';
+const VERSION='0.1.14';
 const compact=s=>String(s||'').replace(/\s+/g,'').toUpperCase();
 function validateConfig(c){
  if(!c||!/^\d{4}-\d{2}-\d{2}$/.test(c.date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(c.time))throw Error('경기 날짜와 시간을 확인하세요.');
@@ -131,7 +132,7 @@ function decide(state,{now,url,access,targetReady}){
  if(now<state.openAt)return 'wait';if(state.phase==='armed')return 'reload';return targetReady?'click':'wait';
 }
 function mount(doc,win,options={}){
- const nol=options.provider==='nol',runKey=nol?NOL_KEY:KEY,foldKey=runKey+':folded',settingsKey=runKey+':settings',version=nol?'0.1.0':VERSION;
+ const nol=options.provider==='nol',runKey=nol?NOL_KEY:KEY,foldKey=runKey+':folded',settingsKey=runKey+':settings',version=VERSION;
  const supportedPage=()=>nol?/^https:\/\/nol\.yanolja\.com\/ticket\/genre\/sports(?:\/[a-z0-9-]+)?\/?(?:[?#]|$)/.test(win.location.href):/^https:\/\/(www\.)?ticketlink\.co\.kr\/sports\//.test(win.location.href);
  if(!nol&&/^https:\/\/(www\.)?ticketlink\.co\.kr\/error\/popup\//.test(win.location.href)){Trial.observeError(win,(options.now||(()=>Date.now()))());return null;}
  if(!supportedPage())return null;
@@ -287,5 +288,5 @@ function mount(doc,win,options={}){
 return {KEY,NOL_KEY,validateConfig,matchGame,captureTarget,findTarget,decide,mount};
 });
 
-BaseballEntry.mount(document,window);
+BaseballEntry.mount(document,window,{provider:window.location.hostname==='nol.yanolja.com'?'nol':'ticketlink'});
 })();
