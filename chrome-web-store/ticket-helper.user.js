@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.59
+// @version      0.1.60
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.59";
+globalThis.TICKET_HELPER_VERSION="0.1.60";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1414,6 +1414,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if (typeof this.onBeforeConfirm === 'function') await this.onBeforeConfirm({ profileId, targetDate, mode, session, fallbackCursor });
         const continued = await adapter.continueAfterCaptcha(mode);
         if (!continued?.ok) return this.fail(continued?.stage || 'confirmation-blocked', continued?.message || 'confirmation could not continue', continued || {});
+        if (continued.reservationSubmitted) {
+          this.emit('reservation-submitted', { profileId, session: session?.label || session });
+          return this.finish({stage:'reservation-submitted',profileId,session:session?.label||session,fallbackCursor,reservationSubmitted:true});
+        }
         if (continued.requiresExternalConfirmation) {
           this.emit('payment-submitted', { profileId, session: session?.label || session, amount: continued.amount });
           return this.finish({ stage: 'payment-submitted', profileId, session: session?.label || session, fallbackCursor, amount: continued.amount, paymentSubmitted: true });
@@ -2152,7 +2156,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
   function createNaverBookingAdapter({page,bookingUrl,paymentPolicy={}}){
     if(!page) throw new TypeError('page is required');
-    let requestedDate=null,selectedLabel=null;
+    let requestedDate=null,selectedLabel=null,directReservationSubmitted=false;
     const dateMatches=()=>!requestedDate||page.currentTargetDate()===requestedDate;
     return {
       id:'naver-booking',
@@ -2202,9 +2206,16 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       async continueAfterCaptcha(mode){
         if(mode==='practice') return fail('confirmation-blocked','practice mode stops before 동의하고 결제하기');
         if(page.excludeMarketingConsent?.()===false)return fail('agreement-missing','마케팅 수신 동의를 해제하지 못했습니다. 직접 확인해 주세요.');
-        const actions=page.findExactActions('동의하고 결제하기');
-        if(!actions.length) return fail('confirmation-blocked','동의하고 결제하기 button not found');
-        if(actions.length>1) return fail('confirmation-blocked','multiple 동의하고 결제하기 buttons found');
+        // Reservation-only pages submit directly; payment pages still stop at the Npay boundary in live mode.
+        const reservations=page.findExactActions('동의하고 예약하기');
+        const payments=page.findExactActions('동의하고 결제하기');
+        if(reservations.length+payments.length!==1)return fail('confirmation-blocked','동의하고 예약하기/결제하기 버튼을 하나로 확인하지 못했습니다. 직접 확인해 주세요.');
+        if(reservations.length){
+          if(mode!=='confirm')return fail('confirmation-blocked','예약 확정 모드에서만 최종 예약 버튼을 누릅니다.');
+          if(!directReservationSubmitted){page.clickElement(reservations[0]);directReservationSubmitted=true;}
+          return ok({reservationSubmitted:true,requiresExternalConfirmation:true});
+        }
+        const actions=payments;
         page.clickElement(actions[0]);
         const boundary=await page.waitForNpayBoundary();
         if(!boundary) return fail('navigation-failed','Npay final-payment boundary not detected');
@@ -2224,7 +2235,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const checkCancelled=()=>{if(options.isCancelled?.())throw diagError('cancelled','실행이 중지되었습니다.');};
     const textOf=(el)=>String(el?.innerText??el?.textContent??'').replace(/\s+/g,' ').trim();
     const visible=(el)=>{if(!el||typeof el.getBoundingClientRect!=='function')return false;const r=el.getBoundingClientRect(),s=win.getComputedStyle(el);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};
-    const actions=(label)=>[...doc.querySelectorAll(selectors.actions)].filter(visible).filter(el=>textOf(el)===label).filter(el=>!(el.disabled||el.getAttribute?.('aria-disabled')==='true'||/disabled|inactive|is_disabled/i.test(String(el.className||''))));
+    const actions=(label)=>[...doc.querySelectorAll(selectors.actions)].filter(visible).filter(el=>textOf(el).replace(/\s/g,'')===String(label).replace(/\s/g,'')).filter(el=>!(el.disabled||el.getAttribute?.('aria-disabled')==='true'||/disabled|inactive|is_disabled/i.test(String(el.className||''))));
     function listSessionDescriptors(){
       const seen=new Set(),out=[];
       // Naver's .btn_time places the clock in a text node and stock in a child span.
@@ -3715,7 +3726,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       'ready-to-confirm':'입력 완료 · 직접 최종 확인',
       'filling-form':'예약 정보 입력 중',
       'completed':'결제 화면까지 진행 · 예약 완료 여부를 직접 확인해 주세요.',
-      'payment-submitted':'결제 요청 전송 · 결제 결과를 직접 확인해 주세요.'
+      'payment-submitted':'결제 요청 전송 · 결제 결과를 직접 확인해 주세요.',
+      'reservation-submitted':'예약 버튼 클릭 · 완료 여부를 네이버 화면에서 확인해 주세요.'
     };
     return text[stage]||(result?.stage==='failed'?'실행 실패 · 예약 화면과 상세 상태를 직접 확인해 주세요.':'대기');
   }
@@ -3724,7 +3736,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     if(profile?.adapterId==='keyescape')return /reservation2\.php$/i.test(win?.location?.pathname||'');
     if(profile?.adapterId==='naver-booking'){
       const body=String(doc?.body?.innerText||doc?.body?.textContent||'');
-      return /동의하고\s*결제하기/.test(body)||/\/request(?:\/|$)/i.test(win?.location?.pathname||'');
+      return /동의하고\s*(?:예약|결제)하기/.test(body)||/\/request(?:\/|$)/i.test(win?.location?.pathname||'');
     }
     if(profile?.adapterId==='tonybilly')return /\/reservation\/create(?:\/|$)/i.test(win?.location?.pathname||'');
     if(profile?.adapterId==='beatphobia')return new URL(win.location.href).searchParams.get('go')==='rev.make';
@@ -3824,7 +3836,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.59'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.60'))>0?String(settings.updateRemoteVersion):''};
     let runGeneration=0,activeRun=null,pendingPreparation=null;
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
     let lastLog=await gm.getValue('ticket-helper:last-safe-run-log',''),runLogEvents=[],attentionText='',audioContext=null;
@@ -3920,7 +3932,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
       viewState.dockStatus=watchContext?viewState.watchStatus:viewState.statusText;
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.59');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.60');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -4093,7 +4105,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.59');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.60');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
