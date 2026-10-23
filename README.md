@@ -9,7 +9,7 @@ Personal escape-room / reservation helper.
 Both platforms use the same public `ticket-helper.user.js` and the same GitHub sync format.
 
 ## Current releases
-- Userscript core v0.1.60
+- Userscript core v0.1.61
 - PC Tampermonkey userscript: recommended
 - iPhone Safari + Userscripts
 - Legacy unpacked PC extension v0.1.24
@@ -96,3 +96,6 @@ Charcoal header, flat white sections and teal accents. Saved reservation-user de
 
 ### v0.1.60
 네이버의 ‘동의하고 예약하기’와 ‘동의하고 결제하기’를 모두 인식합니다. 띄어쓰기·줄바꿈 변형도 지원합니다. 직접 최종 예약은 예약 확정 모드에서만 한 번 누르며, 마케팅 동의 제외·중지·중복 버튼 차단을 유지합니다. 버튼 클릭 후 실제 예약 완료 여부는 네이버 화면에서 확인해 주세요. 방탈출 검사41개 통과, 실제 예약/결제 미실행.
+
+### v0.1.61
+네이버 최종 버튼의 지연 표시/활성화를 최대1.5초 기다리고, 한 버튼의 중첩 요소를 중복 집계하지 않습니다. 동의 처리 후 현재 버튼을 다시 찾으며 비활성·중지·마케팅 제외 규칙을 유지합니다. 중단 시 버튼 없음/중복/모드/최종 결제 버튼을 구분해 표시합니다. 방탈출 검사42개 통과. 사용자 아이폰에서 재발한 정확한 원인과 업데이트 후 해결 여부는 아직 미확인입니다.
