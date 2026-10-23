@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.55
+// @version      0.1.56
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.55";
+globalThis.TICKET_HELPER_VERSION="0.1.56";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1123,17 +1123,17 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       any: '예약 가능한 모든 회차를 허용합니다. 원하지 않는 시간도 선택될 수 있습니다.'
     };
     return `<section class="th-plan-box" aria-label="예약 계획">
-      <div class="th-plan-heading"><span class="th-plan-eyebrow">MY BOOKING PLAN</span><strong>원하는 시간을 먼저 정하세요</strong></div>
+      <div class="th-plan-heading"><strong>희망 시간</strong></div>
       <p class="th-plan-help">회차가 없어도 먼저 설정할 수 있습니다</p>
-      ${input('plan-exact-times', '정확한 시간 · 입력 순서가 우선순위', 'text', exactTimes, ' placeholder="12:30, 11:00" autocomplete="off" spellcheck="false" aria-describedby="th-plan-time-help"')}
-      <p class="th-plan-help" id="th-plan-time-help">예: 12:30 → 11:00 · 쉼표로 구분해 입력하세요.</p>
+      ${input('plan-exact-times', '우선순위 순서로 입력', 'text', exactTimes, ' placeholder="12:30, 11:00" autocomplete="off" spellcheck="false" aria-describedby="th-plan-time-help"')}
+      <p class="th-plan-help" id="th-plan-time-help">예: 12:30, 11:00 · 앞에 쓴 시간부터 선택합니다.</p>
       <label class="th-plan-field"><span>회차 선택 방식</span><select data-field="plan-selection-mode" aria-describedby="th-plan-policy-help">${[
         ['legacy', '기존 우선순위 사용'], ['exact', '정확한 시간만'], ['hours', '보조 시간대·범위 사용'], ['any', '모든 가능한 회차 허용']
       ].map(([value, label]) => `<option value="${esc(value)}"${value === mode ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
       <p class="th-plan-policy" id="th-plan-policy-help">${esc(policyHelp[mode])}</p>
       <div class="th-plan-summary" role="status" aria-live="polite"><span>현재 예약 계획</span><strong>${esc(summary)}</strong>${typeof viewState.planSummary === 'string' && viewState.planSummary ? `<p>${esc(viewState.planSummary)}</p>` : ''}</div>
       <div class="th-plan-attention" role="alert" aria-live="assertive" aria-atomic="true"${viewState.attentionText ? '' : ' hidden'}>${esc(viewState.attentionText || '')}</div>
-      <details class="th-plan-advanced" data-ui-section="booking-plan-advanced"><summary>오픈 시각 · 시간 범위 · 취소표 알림</summary><div class="th-plan-advanced-body">
+      <details class="th-plan-advanced" data-ui-section="booking-plan-advanced"><summary>추가 설정 · 오픈 시각 / 취소표</summary><div class="th-plan-advanced-body">
         <div class="th-plan-group"><strong>이번 예약의 오픈 시각</strong><p class="th-plan-help">한국 시간(KST) 기준 · 비우면 테마의 기본 오픈 규칙을 사용합니다.</p>
           ${input('plan-open-date', '오픈 날짜', 'date', opening[0] || '')}
           ${input('plan-open-time', '오픈 시간', 'time', opening[1] || '', ' step="60"')}
@@ -1147,9 +1147,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           <div class="th-plan-watch-status" role="status" aria-live="polite">${esc(watchText)}</div>
           <div class="th-plan-actions"><button type="button" data-action="watch-start">취소표 알림 시작</button><button type="button" data-action="watch-stop" class="secondary">감시 중지</button></div>
         </div>
-      </div></details>
       <div class="th-plan-actions th-plan-utilities"><button type="button" data-action="copy-plan-to-date" class="secondary">다른 날짜로 계획 복사</button><button type="button" data-action="copy-run-log" class="secondary">실행 기록 복사</button></div>
       <p class="th-plan-help">다른 날짜로 복사하면 목표 날짜를 다시 선택합니다.</p>
+      </div></details>
     </section>`;
   }
 
@@ -1182,6 +1182,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     .th-panel .th-time-chip.selected{background:#e6f6ef;border-color:#a9dcca;color:#20694f}.th-panel .th-time-chip b{background:#34775e}
     .th-panel .th-open-display{background:#edf3ff;border-color:#d6e1fa}.th-panel .th-open-display strong{color:#344eaa}
     .th-panel .th-mobile-config input:not([type=checkbox]):not([type=hidden]),.th-panel .th-mobile-config select{font-size:16px;min-height:44px;min-width:0;max-width:100%}
+    .th-panel:not([open])>summary{min-height:44px;padding:10px 14px;box-shadow:none}.th-panel:not([open])>summary strong{font-size:13px;line-height:1.4}.th-panel:not([open]){box-shadow:0 4px 18px rgba(32,49,87,.14)}
+    .th-panel .th-mobile-config{gap:10px;background:#f5f7fa}.th-panel .th-card{border-radius:14px;box-shadow:none}.th-panel .th-card-heading{margin-bottom:2px}
+    .th-panel .th-plan-box{padding:12px;gap:9px;background:#f8faff;border-radius:12px}.th-panel .th-plan-heading strong{font-size:14px}.th-panel .th-plan-summary{padding:9px 10px;gap:3px}.th-panel .th-plan-policy{padding:8px 10px}
+    .th-panel .th-plan-box .th-plan-help{font-size:11px;line-height:1.5}.th-panel .th-subsection>summary{min-height:44px;font-size:12px}.th-panel .th-plan-utilities button{font-size:12px}
     .th-plan-box,.th-plan-box *{box-sizing:border-box;min-width:0;max-width:100%}
     .th-plan-box{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;padding:14px;border:1px solid #d8e3fa;border-radius:16px;background:linear-gradient(145deg,#f7faff,#f5f5ff);color:#273858;overflow-wrap:anywhere}
     .th-plan-heading{display:grid;gap:5px}.th-plan-heading strong{font-size:16px;line-height:1.5;letter-spacing:-.3px}
@@ -2545,13 +2549,13 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   async function selectParticipantCount(doc,win,count,{isCancelled=()=>false,maxWaitMs=8000}={}){
     const n=Number(count);if(!Number.isInteger(n)||n<1||n>20)return false;
     const text=el=>{const copy=el?.cloneNode?.(true);if(!copy)return '';copy.querySelectorAll('.blind,.necessary_text,i,svg').forEach(node=>node.remove());return String(copy.textContent||'').replace(/\s+/g,' ').trim();};
-    const label=new RegExp('^'+n+'\\s*명$');
+    const label=new RegExp('^'+n+'\\s*[명인]$');
     const rendered=el=>{if(!el?.isConnected)return false;for(let node=el;node;node=node.parentElement){const style=win.getComputedStyle(node);if(node.hidden||style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse')return false;}return true;};
     const sleep=()=>new Promise(resolve=>win.setTimeout(resolve,50));
     let scope=null,trigger=null;
     for(let elapsed=0;elapsed<=maxWaitMs;elapsed+=50){
       if(isCancelled())return false;
-      const candidates=[...doc.querySelectorAll('select')].filter(el=>[...el.options].some(o=>/^\d+\s*명$/.test(text(o))));
+      const candidates=[...doc.querySelectorAll('select')].filter(el=>[...el.options].some(o=>/^\d+\s*[명인]$/.test(text(o))));
       if(candidates.length>1)return false;
       if(candidates.length===1){const el=candidates[0],option=[...el.options].find(o=>label.test(text(o))&&!o.disabled&&!o.closest('optgroup[disabled]'));if(el.matches(':disabled')||!option)return false;
         if(el.selectedOptions?.[0]===option)return true;
@@ -2913,33 +2917,38 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     return `<details class="th-panel" data-compact="${compact}"${open}><summary><strong>Ticket Helper</strong><span>${esc(selected?.themeName||'탭해서 설정')}</span></summary><div class="th-mobile-config">
       ${viewState.updateRemoteVersion?`<div class="th-help" role="status">새 버전 v${esc(viewState.updateRemoteVersion)} · <button type="button" data-action="check-update">업데이트 파일 열기</button></div>`:""}
       <section class="th-card th-theme-card" aria-label="예약 테마"><div class="th-card-heading"><span class="th-step">01</span><strong>예약 테마</strong></div>
+      <label>사이트<select data-field="site">${siteOptions}</select></label>
+      <label>지점<select data-field="branch">${branchOptions}</select></label>
+      <label>테마<select data-field="profile">${themeOptions}</select></label>
+      <details class="th-subsection" data-ui-section="theme-info"><summary>테마 안내 · 오픈 규칙</summary><div class="th-subsection-body">
       ${compact?`<div class="th-compact-summary">${esc(compactSummary)}</div>`:`<div class="th-scan-result">${esc(scanText)}</div>`}
       ${selected?.openingHint?`<small>${esc(selected.openingHint.note||'오픈 규칙 확인 필요')}${selected.openingHint.openTime?` · 참고 시각 ${esc(selected.openingHint.openTime)}`:''}</small>`:''}
       ${safeImageUrl(selected?.openingRuleSourceUrl||selected?.openingHint?.sources?.[0]||'')?`<a href="${esc(safeImageUrl(selected.openingRuleSourceUrl||selected.openingHint.sources?.[0]))}" target="_blank" rel="noopener noreferrer">오픈 안내 출처 · ${selected.openingRuleStatus==='verified'?'공식 확인':selected.openingRuleStatus==='configured'?'사용자 설정':'재확인 필요'}</a>`:''}
       <div class="th-storage-status">저장 · ${esc(storageKindLabel(viewState.storageKind))} · 테마 ${Number(viewState.savedThemeCount||profiles.length)}개</div>
 
 
-      <label>사이트<select data-field="site">${siteOptions}</select></label>
-      <label>지점<select data-field="branch">${branchOptions}</select></label>
-      <label>테마<select data-field="profile">${themeOptions}</select></label>
       ${themePreview}
+      </div></details>
       ${selected?`<div class="th-help">${selected.adapterId==='manual'?'목록·예약 링크 지원 · 자동 예약 미지원':selected.automationStatus==='practice-supported'?'선택·입력 연습 지원 · 실기기 확인 필요':''}${!selected.openingRule?' · 오픈 규칙 확인 필요':''}</div>${selected.reservationHint?`<div class="th-help">${esc(selected.reservationHint)}</div>`:''}<a class="th-link-button" href="${esc(selected.themeBookingUrl||selected.bookingUrl||'')}">공식 예약 페이지 열기</a>`:''}
       </section>
       <section class="th-card" aria-label="예약 설정"><div class="th-card-heading"><span class="th-step">02</span><strong>예약 설정</strong></div>
       ${pickerFieldMarkup({label:'목표 날짜',field:'target-date',type:'date',value:state.targetDate||''})}
       ${deps.renderBookingPlanFields?deps.renderBookingPlanFields(selected,state,viewState):''}
-      <details class="th-subsection" data-ui-section="hours"${!times.length?' open':''}><summary>보조 시간대 · ${esc((selected?.timePriorities||[]).map(p=>p.hour+'시').join(' → ')||'선택 안 함')}</summary><div class="th-subsection-body">
+      <details class="th-subsection" data-ui-section="hours"${selected?.bookingPlan?.selectionMode==='hours'?' open':''}><summary>보조 시간대 · ${esc((selected?.timePriorities||[]).map(p=>p.hour+'시').join(' → ')||'선택 안 함')}</summary><div class="th-subsection-body">
       <div class="th-help">실제 회차 우선순위 다음으로 사용할 시간대를 선택합니다.</div>
       <div class="th-time-grid">${hourButtons}</div>
       <div class="th-inline-add"><select data-field="hour-to-add">${hourOptions}</select><button type="button" data-action="add-hour" disabled>시간대 추가</button></div>
       </div></details>
 
 
+      <details class="th-subsection" data-ui-section="session-preview"><summary>회차 미리보기 · ${times.length?times.length+'개':'오픈 후 확인'}</summary><div class="th-subsection-body">
       <button type="button" class="th-scan-button secondary" data-action="scan-target-date">목표일 회차 미리보기 (선택)</button>
 
       <div class="th-section-title">실제 회차 우선순위 <small>원하는 순서대로 탭</small></div>
       <div class="th-time-grid">${sessionButtons}</div>
       ${times.length?'<button type="button" class="th-link-button" data-action="clear-session-priority">회차 우선순위 초기화</button>':''}
+
+      </div></details>
 
       <div class="th-section-title">예약자 정보</div>
       <label>참여 인원<select data-field="local-participants"><option value="">직접 선택</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}"${Number(localUser.participants)===i+1?' selected':''}>${i+1}명</option>`).join('')}</select></label>
@@ -2951,7 +2960,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       <div class="th-help th-readiness" role="status" aria-live="polite"><strong>예약 준비</strong><div data-preparation-summary></div><div data-opening-countdown></div></div>
       <div class="th-run-state"><span class="th-state-dot" aria-hidden="true"></span><span>현재 상태 · ${esc(viewState.statusText||'대기')}</span></div>
       <label>모드<select data-field="mode"><option value="practice"${state.mode==='practice'||!state.mode?' selected':''}>연습 · 확정 안 함</option><option value="live"${state.mode==='live'?' selected':''}>실전 · 예약확정 / 결제 직전</option><option value="confirm"${state.mode==='confirm'?' selected':''}>예약 확정까지 · 최종 결제 클릭</option></select></label>
-      <div class="th-warning">※ ‘예약 확정까지’는 네이버 최종 결제 버튼까지 누릅니다. 생체인증/추가인증은 직접 진행합니다.</div>
+      <div class="th-warning">확정 모드는 최종 결제 버튼까지 누릅니다. 추가 인증은 직접 진행해 주세요.</div>
       <div class="th-config-actions"><button type="button" data-action="prepare"${selected?'':' disabled'}>티켓팅 준비</button><button type="button" data-action="stop" class="secondary">중지</button></div>
       </section>
       <details class="th-subsection th-more-settings" data-ui-section="more"${compact?'':' open'}><summary>추가 설정</summary><div class="th-subsection-body">
@@ -3677,7 +3686,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.55'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.56'))>0?String(settings.updateRemoteVersion):''};
     let runGeneration=0,activeRun=null,pendingPreparation=null;
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
     let lastLog=await gm.getValue('ticket-helper:last-safe-run-log',''),runLogEvents=[],attentionText='',audioContext=null;
@@ -3769,7 +3778,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const plan=p?.bookingPlan||{};const exactLabels=Array.isArray(plan.exactTimes)?plan.exactTimes.join(' → '):String(plan.exactTimes||'');
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.55');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.56');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -3942,7 +3951,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.55');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.56');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
