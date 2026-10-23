@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.54
+// @version      0.1.55
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -36,3 +36,4 @@
 // @inject-into  content
 // @run-at       document-start
 // ==/UserScript==
+
