@@ -9,7 +9,7 @@ Personal escape-room / reservation helper.
 Both platforms use the same public `ticket-helper.user.js` and the same GitHub sync format.
 
 ## Current releases
-- Userscript core v0.1.58
+- Userscript core v0.1.59
 - PC Tampermonkey userscript: recommended
 - iPhone Safari + Userscripts
 - Legacy unpacked PC extension v0.1.24
@@ -90,3 +90,6 @@ Personal booking data such as name, phone, cookies, or credentials must never be
 
 ### v0.1.58
 Charcoal header, flat white sections and teal accents. Saved reservation-user details collapse when complete; missing details stay open. Existing settings and booking hooks are preserved. Escape tests39/39 and Chromium1280/390/320px layout checks pass; iPhone Safari and live opening remain unverified.
+
+### v0.1.59
+준비·중지와 현재 상태를 하단에 고정하고, 준비 완료 후에는 대기 요약만 표시합니다. 설정을 수정하면 기존 대기를 해제합니다. 화면 갱신 직후 접기·스크롤이 되돌아가던 문제와 자동 재개 완료 후 실행 중 표시가 남던 문제를 수정했습니다. 방탈출 검사40개와 Chromium 화면 검증을 통과했습니다. iPhone Safari 실기기·실제 정각 예약은 미검증입니다.

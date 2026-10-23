@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.58
+// @version      0.1.59
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.58";
+globalThis.TICKET_HELPER_VERSION="0.1.59";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1171,6 +1171,30 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     };
   }
 
+  function renderWaitingCard(profile = {}, state = {}, viewState = {}, localUser = {}) {
+    const plan=profile.bookingPlan||{};
+    const exact=Array.isArray(plan.exactTimes)?plan.exactTimes.join(' → '):String(plan.exactTimes||'');
+    const saved=Array.isArray(viewState.schedule?.userPriority)?viewState.schedule.userPriority.join(' → '):'';
+    const hours=(profile.timePriorities||[]).map(p=>String(p.hour).padStart(2,'0')+'시').join(' → ');
+    let priority=exact||saved||hours||'회차 조건 확인 필요';
+    if(plan.selectionMode==='exact')priority=exact||'정확한 시간 미설정';
+    else if(plan.selectionMode==='any')priority='예약 가능한 모든 회차';
+    else if(plan.selectionMode==='hours')priority=hours||(plan.rangeStart||plan.rangeEnd?'허용 시간 범위 내':'보조 시간대 미설정');
+    else if(plan.selectionMode!=='exact'&&hours&&(exact||saved))priority+=' · 보조 '+hours;
+    if((!plan.selectionMode||plan.selectionMode==='legacy')&&profile.allowAnyFallback)priority+=' · 그 외 회차 허용';
+    const mode=state.mode==='confirm'?'예약 확정까지':state.mode==='live'?'실전 · 확정/결제 직전':'연습 · 확정 안 함';
+    return `<section class="th-wait-card" aria-label="예약 대기"${viewState.waiting?'':' hidden'}>
+      <div class="th-wait-eyebrow" role="status"><i aria-hidden="true"></i>${esc(viewState.statusText||'오픈 전 대기 중')}</div>
+      <h2>${esc(profile.themeName||'테마 확인 필요')}</h2><p class="th-wait-branch">${esc(profile.branchName||'')}</p>
+      <div class="th-wait-clock"><span>예약 오픈까지</span><strong data-opening-countdown aria-live="off"></strong><small>${esc(viewState.openingText||'오픈 시각 확인 필요')} · 한국 시간</small></div>
+      <dl class="th-wait-facts"><div><dt>이용 날짜</dt><dd>${esc(state.targetDate||'확인 필요')}</dd></div><div><dt>참여 인원</dt><dd>${localUser.participants?esc(localUser.participants)+'명':'직접 선택'}</dd></div><div><dt>희망 시간</dt><dd>${esc(priority)}</dd></div>${plan.rangeStart||plan.rangeEnd?`<div><dt>허용 범위</dt><dd>${esc(plan.rangeStart||'00:00')} ~ ${esc(plan.rangeEnd||'23:59')}</dd></div>`:''}<div><dt>실행 모드</dt><dd>${esc(mode)}</dd></div></dl>
+      ${state.mode==='confirm'?'<div class="th-warning">확정 모드는 최종 결제 버튼까지 누릅니다. 추가 인증은 직접 진행해 주세요.</div>':''}
+      ${viewState.attentionText?`<div class="th-plan-attention" role="alert">${esc(viewState.attentionText)}</div>`:''}
+      <p class="th-wait-help">이 페이지를 열어 두세요. 설정을 수정하면 현재 대기가 해제됩니다.</p>
+      <button type="button" class="secondary" data-action="edit-prepared">설정 수정 · 대기 해제</button>
+    </section>`;
+  }
+
   const bookingPlanCss = `
     .th-panel{color:#202d46;border-color:#dce3ef;box-shadow:0 18px 58px rgba(32,49,87,.18);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",system-ui,sans-serif}
     .th-panel>summary{background:linear-gradient(115deg,#f6f9ff,#f0f1ff);border-bottom-color:#e2e7f4}
@@ -1275,8 +1299,37 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     .th-status-panel{border-color:#e1e6e9;border-radius:12px;box-shadow:0 3px 12px #15212d0d}
     .th-status-panel>summary{color:#64737c}
     @media(max-width:340px){.th-panel .th-mobile-config{padding:0 12px 10px}.th-panel .th-theme-card{grid-template-columns:minmax(0,1fr)}.th-panel .th-theme-card>label:nth-of-type(1),.th-panel .th-theme-card>label:nth-of-type(2){grid-column:1/-1}.th-panel .th-card{padding:13px 0}}
+    /* One scroll body and one persistent action dock. */
+    .th-panel[open]{overflow:hidden}
+    .th-panel>summary{box-sizing:border-box;min-height:52px;height:52px;flex:none}
+    .th-panel:not([open])>summary{height:auto;min-height:44px}
+    .th-panel-workspace{display:flex;flex-direction:column;max-height:min(calc(80dvh - 54px),766px);min-height:0}
+    .th-panel:not([open]) .th-panel-workspace{display:none}
+    .th-panel .th-panel-scroll{overflow-y:auto;overscroll-behavior:contain;min-height:0;flex:1 1 auto;scrollbar-width:thin;scrollbar-color:#c3cdd1 #fff;padding-bottom:8px}
+    .th-setup-fields{display:grid;min-width:0}.th-setup-fields[hidden],.th-wait-card[hidden]{display:none!important}
+    .th-action-dock{box-sizing:border-box;flex:none;display:grid;gap:8px;padding:10px 16px 12px;border-top:1px solid #e0e7e8;background:#fff;box-shadow:0 -6px 20px #17232b08}
+    .th-dock-line{display:flex;align-items:center;justify-content:space-between;gap:8px;font:600 11px/1.5 system-ui;color:#52666f}
+    .th-dock-status{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+    .th-dock-countdown{flex:none;font-variant-numeric:tabular-nums;color:#087f73;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .th-action-dock .th-config-actions{display:grid;grid-template-columns:minmax(0,1fr) 76px;gap:8px;margin:0}
+    .th-action-dock .th-config-actions button{box-sizing:border-box;min-height:48px;border-radius:10px;border:1px solid #172f2c;background:#172f2c;color:#fff;font:700 14px/1.4 system-ui;padding:10px 12px;cursor:pointer}
+    .th-action-dock .th-config-actions button.secondary{background:#f4f6f7;border-color:#e0e5e8;color:#52616b}
+    .th-action-dock .th-config-actions button:disabled{background:#eef3f0!important;color:#627c70!important;border-color:#dce6df!important;cursor:default}
+    .th-wait-card{display:grid;gap:14px;padding:22px 0 18px;min-width:0;color:#17232b}
+    .th-wait-eyebrow{display:flex;gap:7px;align-items:center;color:#087f73;font-size:12px;font-weight:650}
+    .th-wait-eyebrow i{width:6px;height:6px;border-radius:50%;background:#087f73;flex:none}
+    .th-wait-card h2{font-size:22px;line-height:1.4;letter-spacing:-.6px;margin:0;overflow-wrap:anywhere}
+    .th-wait-branch{font-size:12px;color:#64737c;margin:-8px 0 0}
+    .th-wait-clock{display:grid;gap:7px;padding:18px 14px;border:1px solid #cfe6dc;border-radius:12px;background:#f2f9f5}
+    .th-wait-clock>span{font-size:11px;color:#4c6e62}.th-wait-clock>strong{font-size:26px;line-height:1.4;letter-spacing:-.7px;font-variant-numeric:tabular-nums;color:#184b3d;overflow-wrap:anywhere}
+    .th-panel .th-wait-clock>small{font-size:11px;color:#4c6e62}
+    .th-wait-facts{margin:0;display:grid;gap:0}.th-wait-facts>div{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid #edf0f1}
+    .th-wait-facts dt{font-size:12px;color:#64737c}.th-wait-facts dd{margin:0;font-size:13px;font-weight:650;text-align:right;overflow-wrap:anywhere}
+    .th-wait-help{font-size:11px;line-height:1.6;color:#64737c;margin:0}
+    .th-panel .th-wait-card>button{min-height:44px;width:100%;border-radius:9px;font:650 12px system-ui}
+    @media(max-width:340px){.th-action-dock{padding:9px 12px 10px}.th-dock-line{font-size:10px}.th-wait-card{padding-top:17px}.th-wait-clock>strong{font-size:23px}}
   `;
-  return { renderBookingPlanFields, readBookingPlanFields, bookingPlanCss };
+  return { renderBookingPlanFields, readBookingPlanFields, renderWaitingCard, bookingPlanCss };
 });
 
 /* END_BOOKING_WORKBENCH_MODULES */
@@ -2976,7 +3029,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const syncStatus=String(viewState.syncStatusText||'연결 안 됨');
     const syncLast=viewState.syncLastAt?formatBackupAt(viewState.syncLastAt):'아직 동기화 없음';
     const syncRepo=String(syncConfig.repoFullName||'omjun0807-del/ticket-helper-private');
-    return `<details class="th-panel" data-compact="${compact}"${open}><summary><strong>Ticket Helper</strong><span>${esc(selected?.themeName||'탭해서 설정')}</span></summary><div class="th-mobile-config">
+    const waiting=!!viewState.waiting,busy=!!viewState.executionBusy;
+    return `<details class="th-panel" data-compact="${compact}" data-view="${waiting?'waiting':'setup'}"${open}><summary><strong>Ticket Helper</strong><span>${esc(selected?.themeName||'탭해서 설정')}</span></summary><div class="th-panel-workspace"><div class="th-mobile-config th-panel-scroll">
+      ${deps.renderWaitingCard?.(selected||{},state,viewState,localUser)||''}
+      <div class="th-setup-fields"${waiting?' hidden':''}>
       ${viewState.updateRemoteVersion?`<div class="th-help" role="status">새 버전 v${esc(viewState.updateRemoteVersion)} · <button type="button" data-action="check-update">업데이트 파일 열기</button></div>`:""}
       <section class="th-card th-theme-card" aria-label="예약 테마"><div class="th-card-heading"><span class="th-step">01</span><strong>예약 테마</strong></div>
       <label>사이트<select data-field="site">${siteOptions}</select></label>
@@ -3025,7 +3081,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       <div class="th-run-state"><span class="th-state-dot" aria-hidden="true"></span><span>현재 상태 · ${esc(viewState.statusText||'대기')}</span></div>
       <label>모드<select data-field="mode"><option value="practice"${state.mode==='practice'||!state.mode?' selected':''}>연습 · 확정 안 함</option><option value="live"${state.mode==='live'?' selected':''}>실전 · 예약확정 / 결제 직전</option><option value="confirm"${state.mode==='confirm'?' selected':''}>예약 확정까지 · 최종 결제 클릭</option></select></label>
       <div class="th-warning">확정 모드는 최종 결제 버튼까지 누릅니다. 추가 인증은 직접 진행해 주세요.</div>
-      <div class="th-config-actions"><button type="button" data-action="prepare"${selected?'':' disabled'}>티켓팅 준비</button><button type="button" data-action="stop" class="secondary">중지</button></div>
+
       </section>
       <details class="th-subsection th-more-settings" data-ui-section="more"${compact?'':' open'}><summary>추가 설정</summary><div class="th-subsection-body">
       <details class="th-subsection" data-ui-section="options"${compact?'':' open'}><summary>실행 옵션</summary><div class="th-subsection-body">
@@ -3063,7 +3119,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       <details class="th-subsection"><summary>${viewState.extensionVersion?`PC 확장판 · v${esc(viewState.extensionVersion)}`:viewState.desktopUserscript?`PC Userscript · v${esc(viewState.installedVersion||'?')}`:`업데이트 · v${esc(viewState.installedVersion||'?')}`}</summary><div class="th-subsection-body">${viewState.extensionVersion?'<div class="th-warning">Chrome/Edge 네이티브 확장판입니다. 새 확장 버전은 브라우저 확장 업데이트 또는 새 PC 확장 패키지로 적용합니다.</div>':viewState.desktopUserscript?'<div class="th-warning">PC에서는 Tampermonkey가 @updateURL / @downloadURL / @version을 기준으로 새 버전을 확인합니다. 확장 프로그램의 업데이트 확인 설정을 켜 주세요. 별도 ZIP 교체나 chrome://extensions 새로고침이 필요 없습니다.</div>':'<div class="th-warning">새 버전을 자동으로 확인해 위에 표시합니다. 버튼으로 파일을 열고 Safari 확장 기능 → Userscripts에서 적용하세요. 설치 파일 자동 교체는 Userscripts가 지원하는 범위에서만 가능합니다.</div><button type="button" data-action="check-update" class="secondary">새 버전 확인</button>'}</div></details>
       <details class="th-subsection"><summary>백업 / 복구</summary><div class="th-subsection-body"><div class="th-warning"><strong>${esc(backupLabel)}</strong><br>테마·회차·설정을 변경하기 전 자동 백업을 1개 유지합니다. 이름/연락처는 백업에 포함하지 않습니다.</div><div class="th-config-actions"><button type="button" data-action="restore-auto-backup" class="secondary"${viewState.backupAt?'':' disabled'}>자동백업 복구</button><button type="button" data-action="import-profiles" class="secondary">가져오기</button><button type="button" data-action="export-profiles" class="secondary">내보내기</button></div></div></details>
       </div></details>
-    </div></details>`;
+    </div></div><div class="th-action-dock" role="group" aria-label="실행 제어"><div class="th-dock-line"><span class="th-dock-status" role="status" aria-live="polite">${esc(viewState.dockStatus||viewState.statusText||'설정 후 준비해 주세요')}</span><span class="th-dock-countdown" data-opening-countdown aria-live="off"></span></div><div class="th-config-actions"><button type="button" data-action="prepare"${selected&&!waiting&&!busy?'':' disabled'}>${waiting?'오픈 대기 중':busy?'실행 중':'티켓팅 준비'}</button><button type="button" data-action="stop" class="secondary">중지</button></div></div></div></details>`;
   }
 
   function applyMobilePriorityConfig(profiles,cfg={}){
@@ -3117,8 +3173,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   function updatePreparationStatus(rootNode,readiness,now=Date.now()){
     const summary=rootNode.querySelector('[data-preparation-summary]');
     if(summary)summary.textContent=readiness.issues.length?readiness.issues.join(' · '):'기본 준비 완료';
-    const countdown=rootNode.querySelector('[data-opening-countdown]');
-    if(countdown){countdown.dataset.openAt=Number.isFinite(readiness.openAtMs)?String(readiness.openAtMs):'';countdown.textContent=formatOpeningCountdown(readiness.openAtMs,now);}
+    for(const countdown of rootNode.querySelectorAll('[data-opening-countdown]')){countdown.dataset.openAt=Number.isFinite(readiness.openAtMs)?String(readiness.openAtMs):'';countdown.textContent=formatOpeningCountdown(readiness.openAtMs,now);}
   }
 
   function fieldNeedsRerender(field){return field==='site'||field==='branch'||field==='profile';}
@@ -3127,7 +3182,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const active=rootNode?.activeElement;
     const activeField=active?.dataset?.field||'';
     return {
-      panelScrollTop:Number(panel?.scrollTop||0),
+      panelScrollTop:Number((panel?.querySelector?.('.th-panel-scroll')||panel)?.scrollTop||0),
       panelOpen:panel?!!panel.open:undefined,
       compactView:panel?.dataset?.compact,
       sectionOpen:[...rootNode?.querySelectorAll?.('[data-ui-section]')||[]].map(el=>({id:el.dataset.uiSection,open:!!el.open})),
@@ -3137,10 +3192,26 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       selectionEnd:Number.isInteger(active?.selectionEnd)?active.selectionEnd:null
     };
   }
+  const panelRestorations=new WeakMap();
   function restorePanelUiState(rootNode,state={}){
+    if(!rootNode||typeof rootNode!=='object')return;
+    panelRestorations.get(rootNode)?.();
+    const originalPanel=rootNode.querySelector?.('.th-panel');
+    const events=['pointerdown','keydown','wheel','input','change','touchstart'];
+    let cancelled=false;
+    const cancel=()=>{
+      cancelled=true;
+      for(const event of events)rootNode.removeEventListener?.(event,cancel,true);
+      if(panelRestorations.get(rootNode)===cancel)panelRestorations.delete(rootNode);
+    };
+    panelRestorations.set(rootNode,cancel);
+    for(const event of events)rootNode.addEventListener?.(event,cancel,{capture:true,passive:true});
     const apply=()=>{
-      const panel=rootNode?.querySelector?.('.th-panel'); const status=rootNode?.querySelector?.('.th-status-content');
-      if(panel){if(typeof state.panelOpen==='boolean')panel.open=state.panelOpen;panel.scrollTop=Number(state.panelScrollTop||0);}
+      const panel=rootNode.querySelector?.('.th-panel');
+      if(cancelled||panel!==originalPanel){cancel();return;}
+      const status=rootNode.querySelector?.('.th-status-content');
+      const scroller=panel?.querySelector?.('.th-panel-scroll')||panel;
+      if(panel){if(typeof state.panelOpen==='boolean')panel.open=state.panelOpen;scroller.scrollTop=Number(state.panelScrollTop||0);}
       if(panel?.dataset?.compact===state.compactView){
         for(const section of state.sectionOpen||[]){
           const el=[...rootNode.querySelectorAll?.('[data-ui-section]')||[]].find(node=>node.dataset.uiSection===section.id);
@@ -3151,7 +3222,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     };
     apply();
     const raf=(typeof requestAnimationFrame==='function'?requestAnimationFrame:(fn)=>setTimeout(fn,0));
-    raf(apply); setTimeout(apply,40);
+    raf(apply);setTimeout(()=>{apply();cancel();},40);
     if(state.activeField){
       const field=[...rootNode.querySelectorAll?.('[data-field]')||[]].find(el=>el.dataset?.field===state.activeField);
       // Native select/date/time pickers can reopen when focused after DOM replacement.
@@ -3180,7 +3251,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     return ()=>{if(held||gesture){pending=true;return false;}pending=false;draw();return true;};
   }
 
-  function mountUserscriptPanel(host,{profiles=[],state={},viewState={},localUser={},syncConfig={},onPrepare,onPracticeNow,onTimingTest,onStop,onChange,onLocalUserInput,onToggleCompact,onSyncConfig,onSyncTest,onSyncPull,onSyncPush,onImport,onExport,onRestoreBackup,onAddCurrent,onScan,onScanTargetDate,onSessionPriority,onClearSessionPriority,onAddHour,onRemoveHour,onCheckUpdate,onCopyPlanToDate,onCopyRunLog,onWatchStart,onWatchStop}={}){
+  function mountUserscriptPanel(host,{profiles=[],state={},viewState={},localUser={},syncConfig={},onPrepare,onPracticeNow,onTimingTest,onStop,onChange,onLocalUserInput,onToggleCompact,onSyncConfig,onSyncTest,onSyncPull,onSyncPush,onImport,onExport,onRestoreBackup,onAddCurrent,onScan,onScanTargetDate,onSessionPriority,onClearSessionPriority,onAddHour,onRemoveHour,onCheckUpdate,onCopyPlanToDate,onCopyRunLog,onWatchStart,onWatchStop,onEditPrepared}={}){
     const rootNode=host.shadowRoot||host.attachShadow?.({mode:'open'})||host;
     const previousUi=capturePanelUiState(rootNode);
     const css=(typeof globalThis!=='undefined'&&globalThis.TICKET_HELPER_CSS)||'';
@@ -3244,6 +3315,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     rootNode.querySelector('[data-action="practice-now"]')?.addEventListener('click',()=>onPracticeNow?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="timing-test"]')?.addEventListener('click',()=>onTimingTest?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="stop"]')?.addEventListener('click',()=>onStop?.());
+    rootNode.querySelector('[data-action="edit-prepared"]')?.addEventListener('click',()=>onEditPrepared?.());
     rootNode.querySelector('[data-action="scan-current"]')?.addEventListener('click',()=>onScan?.(readConfig(rootNode)));
     rootNode.querySelector('[data-action="toggle-compact"]')?.addEventListener('click',()=>onToggleCompact?.());
     rootNode.querySelector('[data-action="scan-target-date"]')?.addEventListener('click',()=>onScanTargetDate?.(readConfig(rootNode)));
@@ -3398,7 +3470,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     };
     const mainPanel=rootNode.querySelector?.('.th-panel');
     mainPanel?.addEventListener('wheel',(event)=>{
-      if(mainPanel.open)wheelScroll(mainPanel,event);
+      if(mainPanel.open)wheelScroll(rootNode.querySelector('.th-panel-scroll')||mainPanel,event);
     },{passive:false,capture:true});
     const statusContent=rootNode.querySelector?.('.th-status-content');
     statusContent?.addEventListener('wheel',(event)=>wheelScroll(statusContent,event),{passive:false,capture:true});
@@ -3409,7 +3481,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       el.addEventListener('change',()=>onChange?.(readConfig(rootNode),field,fieldNeedsRerender(field)));
       if(field==='local-name'||field==='local-phone') el.addEventListener('input',()=>onLocalUserInput?.(readConfig(rootNode)));
     }
-    updatePreparationStatus(rootNode,reservationReadiness(profiles.find(p=>p.id===state.profileId),state,localUser));
+    const readiness=reservationReadiness(profiles.find(p=>p.id===state.profileId),state,localUser);
+    if(viewState.waiting&&Number.isFinite(viewState.waitingOpenAtMs))readiness.openAtMs=viewState.waitingOpenAtMs;
+    updatePreparationStatus(rootNode,readiness);
     restorePanelUiState(rootNode,previousUi);
     return rootNode;
   }
@@ -3750,7 +3824,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.58'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.59'))>0?String(settings.updateRemoteVersion):''};
     let runGeneration=0,activeRun=null,pendingPreparation=null;
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
     let lastLog=await gm.getValue('ticket-helper:last-safe-run-log',''),runLogEvents=[],attentionText='',audioContext=null;
@@ -3823,8 +3897,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     async function prepareOnce(action){
       if(pendingPreparation!==null||activeRun!==null)return {stage:'already-running'};
       primeSound();
-      const token={};pendingPreparation=token;
-      try{return await action();}catch(error){if(!(error instanceof TypeError)&&!(error instanceof RangeError))throw error;hostRoot.alert?.(String(error.message||error));return {stage:'plan-invalid'};}finally{if(pendingPreparation===token)pendingPreparation=null;}
+      const token={};pendingPreparation=token;render();
+      try{return await action();}catch(error){if(!(error instanceof TypeError)&&!(error instanceof RangeError))throw error;hostRoot.alert?.(String(error.message||error));return {stage:'plan-invalid'};}finally{if(pendingPreparation===token){pendingPreparation=null;render();}}
     }
     function selectedProfile(){return profiles.find(p=>p.id===state.profileId)||profiles[0]||null;}
     function viewData(){
@@ -3836,13 +3910,17 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
       const isBookingPage=(ctx.adapterId==='keyescape'&&/reservation1\.php|reservation2\.php/i.test(hostRoot.location.pathname||''))||(ctx.adapterId==='naver-booking'&&/\/items\/\d+|\/request/i.test(hostRoot.location.pathname||''))||(['tonybilly','zeroworld','doom','beatphobia'].includes(ctx.adapterId)&&/reservation|home\.php/i.test(hostRoot.location.pathname||''));
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
+      viewState.waiting=checkpoint?.stage==='armed';
+      viewState.waitingOpenAtMs=checkpoint?.openTrigger?.openAtMs;
+      viewState.executionBusy=pendingPreparation!==null||activeRun!==null;
       viewState.preparationPeople=localUser.participants||'';
       viewState.attentionText=attentionText;
       viewState.watchStatus=state.watchStatus||'취소표 확인 대기';
       const plan=p?.bookingPlan||{};const exactLabels=Array.isArray(plan.exactTimes)?plan.exactTimes.join(' → '):String(plan.exactTimes||'');
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.58');
+      viewState.dockStatus=watchContext?viewState.watchStatus:viewState.statusText;
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.59');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -3855,7 +3933,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       if(!['site','branch','profile','target-date','mode','profile-days-before','profile-open-time','local-name','local-phone','local-participants'].includes(field)&&!String(field).startsWith('plan-'))return;
       if(!checkpoint&&activeRun===null&&pendingPreparation===null&&!watchContext&&watchController?.getState().phase!=='found')return;
       runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('settings-changed');watchContext=null;checkpoint=null;state.statusText='설정 변경 · 기존 대기 해제';state.watchStatus='설정 변경 · 취소표 확인 중지';attentionText='';state.availabilityWatch=null;
-      await storage.clearCheckpoint();await storage.setSettings({...state});const label=host.shadowRoot?.querySelector('.th-run-state span:last-child');if(label)label.textContent='현재 상태 · '+state.statusText;
+      await storage.clearCheckpoint();await storage.setSettings({...state});const label=host.shadowRoot?.querySelector('.th-run-state span:last-child');if(label)label.textContent='현재 상태 · '+state.statusText;const dock=host.shadowRoot?.querySelector('.th-dock-status');if(dock)dock.textContent=state.statusText;
     }
     async function persistConfig(cfg,changedField){
       await disarmForEdit(changedField);
@@ -4015,7 +4093,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.58');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.59');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
@@ -4092,14 +4170,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         return {stage:'navigating'};
       }
       const built=makeMachine(selected,cfg,fallbackCursor,openTrigger);if(!built)return null;
-      activeRun=built.generation;
+      activeRun=built.generation;render();
       try{
         const result=await built.machine.run({profileId:selected.id,targetDate:cfg.targetDate,mode:cfg.mode,userProfile:localUser||{},fallbackCursor});
         if(built.generation!==runGeneration)return {stage:'cancelled'};
         const outcome=await settleResult(result,selected,cfg,fallbackCursor,openTrigger,built.machine);
         if(built.generation===runGeneration&&outcome?.checkpoint){checkpoint=outcome.checkpoint;state.statusText=runStatusText(outcome.result);if(['failed','awaiting-captcha'].includes(outcome.result?.stage))notifyAttention(state.statusText);render();}
         return outcome;
-      }finally{if(activeRun===built.generation)activeRun=null;}
+      }finally{if(activeRun===built.generation){activeRun=null;render();}}
     }
 
     async function resumePersisted(cp){
@@ -4214,6 +4292,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         onSyncPull:async cfg=>{await saveSyncConfigFromUi(cfg);if(syncState.dirty&&!hostRoot.confirm?.('이 기기의 아직 동기화되지 않은 변경사항을 원격 설정으로 덮어쓸까요?'))return;return performGitHubSync('pull');},
         onSyncPush:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('push');},
         onStop:async()=>{runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('stopped');watchContext=null;state.availabilityWatch=null;checkpoint=null;attentionText='';state.statusText='실행 중지';await storage.clearCheckpoint();await storage.setSettings(state);recordRun('cancelled');render();},
+        onEditPrepared:async()=>{try{await disarmForEdit('plan-edit');render();}catch(error){hostRoot.alert?.(String(error.message||error));}},
         onCopyPlanToDate:async()=>{await stopForPlanCopy();},
         onCopyRunLog:async()=>{const text=lastLog||deps.createSafeRunLog([],{});try{if(!hostRoot.navigator?.clipboard?.writeText)throw Error('clipboard-unavailable');await hostRoot.navigator.clipboard.writeText(text);state.statusText='실행 기록 복사 완료';render();}catch{hostRoot.prompt?.('개인정보를 제외한 실행 기록입니다.',text);}},
         onWatchStart:cfg=>prepareOnce(()=>startWatchFromUi(cfg)).catch(error=>hostRoot.alert?.(String(error.message||error))),
@@ -4270,8 +4349,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
     render();
     const updateCountdown=()=>{
-      const el=host.shadowRoot?.querySelector('[data-opening-countdown]');
-      if(el)el.textContent=deps.formatOpeningCountdown(el.dataset.openAt?Number(el.dataset.openAt):null);
+      for(const el of host.shadowRoot?.querySelectorAll('[data-opening-countdown]')||[])el.textContent=deps.formatOpeningCountdown(el.dataset.openAt?Number(el.dataset.openAt):null);
     };
     const countdownTimer=hostRoot.setInterval?.(updateCountdown,250);
     hostRoot.addEventListener?.('pagehide',()=>hostRoot.clearInterval?.(countdownTimer),{once:true});
