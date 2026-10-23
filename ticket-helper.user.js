@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.57
+// @version      0.1.58
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.57";
+globalThis.TICKET_HELPER_VERSION="0.1.58";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1213,6 +1213,68 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     .th-plan-box .th-plan-actions .secondary{background:#fff;border-color:#d3ddef;color:#40577f}
     .th-plan-box :is(input,select,button,summary):focus-visible{outline:3px solid #93afea;outline-offset:2px}
     @media(max-width:340px){.th-panel .th-card{padding:10px}.th-panel .th-mobile-config{padding:8px}.th-plan-box{padding:10px}.th-plan-grid,.th-plan-actions{grid-template-columns:minmax(0,1fr)}}
+    /* Compact charcoal / teal finish. Booking fields and native pickers stay intact. */
+    .th-shell{--th-ink:#17232b;--th-line:#e6eaed;--th-accent:#087f73}
+    .th-panel{border:1px solid #d6dde1;border-radius:18px;box-shadow:0 18px 64px #15212d24;color:var(--th-ink)}
+    .th-panel[open]{scrollbar-gutter:auto;scrollbar-width:thin;scrollbar-color:#c3cdd1 #fff}
+    .th-panel>summary{min-height:52px;padding:14px 16px;background:#17232b;border:0;color:#fff;backdrop-filter:none}
+    .th-panel>summary strong{display:flex;align-items:center;gap:9px;color:#fff;font-size:14px;font-weight:750;letter-spacing:.2px}
+    .th-panel>summary strong:before{content:'';width:8px;height:8px;border-radius:2px;background:#71e4c4;transform:rotate(-12deg);flex:none}
+    .th-panel>summary span{color:#c1cdd3;font-size:11px}
+    .th-panel:not([open])>summary{background:#17232b;padding:11px 15px;min-height:44px}
+    .th-panel:not([open])>summary strong{font-size:13px}
+    .th-panel .th-mobile-config{padding:0 16px 14px;gap:0;background:#fff}
+    .th-panel .th-card{padding:16px 0;margin:0;border:0;border-bottom:1px solid var(--th-line);border-radius:0;box-shadow:none;gap:10px;background:#fff}
+    .th-panel .th-card-heading{gap:8px;min-height:22px;margin:0 0 2px;font-size:13px;color:#17232b}
+    .th-panel .th-step{width:auto;height:auto;border-radius:0;background:none;color:#8b989f;font-size:10px;font-weight:650;font-variant-numeric:tabular-nums}
+    .th-panel .th-mobile-config label,.th-panel .th-picker-label{font-size:12px;font-weight:600;color:#64737c;gap:5px}
+    .th-panel .th-mobile-config input:not([type=checkbox]):not([type=hidden]),.th-panel .th-mobile-config select{min-height:44px;font-size:16px;border-color:#dfe5e8;border-radius:9px;background:#f9fafb;color:#17232b;font-weight:600;box-shadow:none}
+    .th-panel .th-picker-shell,.th-panel .th-custom-picker-trigger{background:#f9fafb;border-color:#dfe5e8;border-radius:9px!important}
+    .th-panel .th-picker-display{color:#17232b!important;font-weight:600!important}
+    .th-panel .th-theme-card{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px}
+    .th-panel .th-theme-card>*{grid-column:1/-1}
+    .th-panel .th-theme-card>label:nth-of-type(1),.th-panel .th-theme-card>label:nth-of-type(2){grid-column:auto}
+    .th-panel .th-theme-card>.th-help:empty{display:none}
+    .th-panel .th-theme-card>.th-help{background:none;padding:0;color:#64737c;font-size:11px}
+    .th-panel .th-link-button{color:var(--th-accent);font-size:12px;font-weight:650}
+    .th-panel .th-subsection,.th-panel .th-plan-advanced{background:#fff;border:0;border-top:1px solid var(--th-line);border-radius:0}
+    .th-panel .th-subsection>summary,.th-panel .th-plan-advanced>summary{min-height:44px;padding:10px 0;color:#697780;font-size:12px;font-weight:600}
+    .th-panel .th-subsection>summary:after,.th-panel .th-plan-advanced>summary:after{color:#8d9aa1;font-size:14px}
+    .th-panel .th-subsection-body,.th-panel .th-plan-advanced-body{padding:0 0 12px;background:#fff}
+    .th-panel .th-more-settings{margin-top:10px}
+    .th-panel .th-more-settings>.th-subsection-body{padding:4px 0;background:#fff}
+    .th-panel .th-plan-box{padding:0;border:0;border-radius:0;background:#fff;gap:8px}
+    .th-panel .th-plan-heading strong{font-size:12px;font-weight:650;color:#64737c}
+    .th-panel .th-plan-box>.th-plan-help{position:absolute;width:1px;height:1px;margin:-1px;padding:0;clip-path:inset(50%);overflow:hidden;white-space:nowrap}
+    .th-panel .th-mobile-config .th-plan-box input[data-field=plan-exact-times]{background:#f0f9f6;border-color:#b5d9ce;box-shadow:none;letter-spacing:.4px;font-weight:700}
+    .th-panel .th-plan-policy{padding:0;border-radius:0;background:none;color:#64737c;font-size:11px;line-height:1.6}
+    .th-panel[data-compact=true] .th-plan-summary{display:none}
+    .th-panel .th-card[aria-label="예약 설정"]{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px}
+    .th-panel .th-card[aria-label="예약 설정"]>*{grid-column:1/-1}
+    .th-panel .th-saved-user>.th-subsection-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    @media(max-width:340px){.th-panel .th-saved-user>.th-subsection-body{grid-template-columns:minmax(0,1fr)}}
+    .th-panel .th-section-title{border:0;padding:4px 0 0;font-size:12px;color:#64737c;font-weight:650}
+    .th-panel .th-open-display{padding:10px 12px;border:1px solid #dce9e5;background:#f2f8f5;border-radius:9px;gap:3px}
+    .th-panel .th-open-display span{font-size:11px;color:#4c6e62}
+    .th-panel .th-open-display strong{font-size:16px;font-weight:750;color:#184b3d;font-variant-numeric:tabular-nums}
+    .th-panel .th-readiness{padding:0;background:none;font-size:11px;color:#64737c}
+    .th-panel .th-readiness strong{color:#455761;font-weight:650;font-size:12px}
+    .th-panel .th-readiness [data-opening-countdown]{color:var(--th-accent);font-size:12px;font-variant-numeric:tabular-nums}
+    .th-panel .th-run-state{padding:8px 0;background:none;color:#64737c;font-size:12px}
+    .th-panel .th-state-dot{background:var(--th-accent);width:6px;height:6px}
+    .th-panel .th-mode-badge{border:1px solid #d6e7df;background:#f1f8f4;color:#377260;font-size:10px;padding:3px 7px}
+    .th-panel .th-execution-card .th-config-actions{grid-template-columns:minmax(0,1fr) 76px}
+    .th-panel .th-execution-card [data-action=prepare]{min-height:48px;background:#172f2c;border-color:#172f2c;border-radius:10px;font-size:14px;font-weight:700}
+    .th-panel .th-mobile-config .secondary{background:#f4f6f7;border-color:#e0e5e8;color:#52616b}
+    .th-panel .th-plan-actions button,.th-panel .th-config-actions button:not(.secondary){background:#172f2c;border-color:#172f2c}
+    .th-panel .th-plan-actions button.secondary{background:#f4f6f7;border-color:#e0e5e8;color:#52616b}
+    .th-panel .th-warning{background:#fffaee;color:#806125;font-size:11px;line-height:1.6;padding:9px 10px;border-radius:8px}
+    .th-panel .th-time-chip.selected{background:#e9f6ef;border-color:#b7dac9;color:#245d46}
+    .th-panel .th-time-chip b,.th-panel .th-hour-chip b{background:#39785d}
+    .th-panel :is(button,summary,select,input,a):focus-visible{outline:3px solid #79bfae;outline-offset:2px}
+    .th-status-panel{border-color:#e1e6e9;border-radius:12px;box-shadow:0 3px 12px #15212d0d}
+    .th-status-panel>summary{color:#64737c}
+    @media(max-width:340px){.th-panel .th-mobile-config{padding:0 12px 10px}.th-panel .th-theme-card{grid-template-columns:minmax(0,1fr)}.th-panel .th-theme-card>label:nth-of-type(1),.th-panel .th-theme-card>label:nth-of-type(2){grid-column:1/-1}.th-panel .th-card{padding:13px 0}}
   `;
   return { renderBookingPlanFields, readBookingPlanFields, bookingPlanCss };
 });
@@ -2952,8 +3014,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
       <div class="th-section-title">예약자 정보</div>
       <label>참여 인원<select data-field="local-participants"><option value="">직접 선택</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}"${Number(localUser.participants)===i+1?' selected':''}>${i+1}명</option>`).join('')}</select></label>
+      <details class="th-subsection th-saved-user" data-ui-section="local-user"${String(localUser.name||'').trim()&&/^01\d\d{7,8}$/.test(String(localUser.phone||'').replace(/\D/g,''))?'':' open'}><summary>예약자 · ${esc(String(localUser.name||'').trim()||'이름·연락처 입력')}</summary><div class="th-subsection-body">
       <label>예약자 이름<input data-field="local-name" autocomplete="name" value="${esc(localUser.name||'')}"></label>
       <label>연락처<input data-field="local-phone" inputmode="tel" autocomplete="tel" value="${esc(localUser.phone||'')}" placeholder="01012345678"></label>
+      </div></details>
       </section>
       <section class="th-card th-execution-card" aria-label="실행"><div class="th-card-heading"><span class="th-step">03</span><strong>실행</strong><span class="th-mode-badge">${state.mode==='confirm'?'예약 확정':state.mode==='live'?'실전':'연습'}</span></div>
       <div class="th-open-display"><span>예약 오픈</span><strong>${esc(viewState.openingText||'규칙·날짜 설정 필요')}</strong></div>
@@ -3686,7 +3750,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.57'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.58'))>0?String(settings.updateRemoteVersion):''};
     let runGeneration=0,activeRun=null,pendingPreparation=null;
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
     let lastLog=await gm.getValue('ticket-helper:last-safe-run-log',''),runLogEvents=[],attentionText='',audioContext=null;
@@ -3778,7 +3842,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const plan=p?.bookingPlan||{};const exactLabels=Array.isArray(plan.exactTimes)?plan.exactTimes.join(' → '):String(plan.exactTimes||'');
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.57');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.58');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -3951,7 +4015,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.57');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.58');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);

@@ -9,13 +9,13 @@ Personal escape-room / reservation helper.
 Both platforms use the same public `ticket-helper.user.js` and the same GitHub sync format.
 
 ## Current releases
-- Userscript core v0.1.41
+- Userscript core v0.1.58
 - PC Tampermonkey userscript: recommended
 - iPhone Safari + Userscripts
 - Legacy unpacked PC extension v0.1.24
 - Chrome Web Store package v0.1.24 (not required for the recommended PC setup)
 - Keyescape / Naver Booking adapters + five new partner sites (manual final confirmation)
-- configurable session priority and theme fallback
+- configurable session priority and hour priorities
 - Keyescape branch/theme selection now waits for dynamic options and has a jQuery-change fallback
 - Keyescape profiles can use a direct theme reservation URL; WANNA GO HOME now opens its theme-specific reservation URL before loading the target date
 - Keyescape target scans include a navigation-loop guard so a canonicalized URL cannot trigger infinite reloads
@@ -86,3 +86,7 @@ Personal booking data such as name, phone, cookies, or credentials must never be
 
 ### v0.1.56
 네이버 참여 인원의 `2인`/`2명` 표기를 모두 지원합니다. 테마 안내·회차 미리보기·복사 도구는 접어서 표시하며 날짜·희망 시간·예약자·실행 설정은 기본 화면에 둡니다.
+
+
+### v0.1.58
+Charcoal header, flat white sections and teal accents. Saved reservation-user details collapse when complete; missing details stay open. Existing settings and booking hooks are preserved. Escape tests39/39 and Chromium1280/390/320px layout checks pass; iPhone Safari and live opening remain unverified.
