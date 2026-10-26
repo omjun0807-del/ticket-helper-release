@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.62
+// @version      0.1.63
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.62";
+globalThis.TICKET_HELPER_VERSION="0.1.63";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -61,7 +61,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   root.TicketHelper=Object.assign(root.TicketHelper||{},api);
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const BUILTIN_CATALOG_VERSION='2026-10-24-partners-8';
+  const BUILTIN_CATALOG_VERSION='2026-10-26-partners-9';
   const VERIFIED_AT='2026-09-30';
 
   function normalizedName(value){
@@ -111,6 +111,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     '전주점|사라진 목격자':'https://d1kqa23lh2nxjx.cloudfront.net/file/theme_info/%EC%82%B0%EC%9E%A5_size%20down.png'
   };
   const KEYESCAPE_THEME_URLS={
+    'STATION|머니머니부동산':'https://www.keyescape.com/reservation1.php?theme_info_num=43&theme_num=65&zizum_num=22',
+    'STATION|내 방':'https://www.keyescape.com/reservation1.php?theme_info_num=44&theme_num=66&zizum_num=22',
+    'STATION|NOSTALGIA VISTA':'https://www.keyescape.com/reservation1.php?theme_info_num=45&theme_num=67&zizum_num=22',
     '우주라이크|WANNA GO HOME':'https://www.keyescape.com/reservation1.php?theme_info_num=33&theme_num=56&zizum_num=16'
   };
   const BRANCHES=[
@@ -1683,7 +1686,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             const expected=new URL(profile.themeBookingUrl,'https://www.keyescape.com');
             const current=new URL(page.currentHref(),'https://www.keyescape.com');
             const keys=['zizum_num','theme_num','theme_info_num'];
-            if(keys.every(key=>!expected.searchParams.get(key)||expected.searchParams.get(key)===current.searchParams.get(key))){
+            if(['theme_num','theme_info_num'].every(key=>!!expected.searchParams.get(key))&&/^(?:www\.)?keyescape\.com$/.test(expected.hostname)&&/^(?:www\.)?keyescape\.com$/.test(current.hostname)&&expected.pathname===current.pathname&&(!profile.branchId||String(profile.branchId)===current.searchParams.get('zizum_num'))&&keys.every(key=>!expected.searchParams.get(key)||expected.searchParams.get(key)===current.searchParams.get(key))&&(typeof page.isThemeSelected!=='function'||page.isThemeSelected(themeName))){
               return resultOk({themeName,selectedByUrl:true});
             }
           }catch{}
@@ -1772,9 +1775,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if (!name || !phone2 || !phone3 || !userProfile?.name || tail.length !== 8) {
           return resultFail('form-field-missing', 'reservation name/phone fields are incomplete');
         }
-        name.setValue(String(userProfile.name));
-        phone2.setValue(tail.slice(0, 4));
-        phone3.setValue(tail.slice(4, 8));
+        try{
+          name.setValue(String(userProfile.name));
+          phone2.setValue(tail.slice(0, 4));
+          phone3.setValue(tail.slice(4, 8));
+        }catch(error){if(error?.stage==='cancelled')return resultFail('cancelled','실행이 중지되었습니다.');throw error;}
         if (userProfile?.participants && !await page.selectParticipants?.(userProfile.participants)) {
           return resultFail('participants-missing', '설정한 참여 인원을 선택하지 못했습니다. 직접 확인해 주세요.');
         }
@@ -1809,6 +1814,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
   function createBrowserKeyescapePage(doc = document, win = window, options = {}) {
     const selectors = deps.KEYESCAPE_SELECTORS;
+    const checkCancelled=()=>{if(options.isCancelled?.()){const error=new Error('실행이 중지되었습니다.');error.stage='cancelled';throw error;}};
     const textOf = (el) => String(el?.innerText ?? el?.textContent ?? '').replace(/\s+/g, ' ').trim();
     const visible = (el) => {
       if (!el || typeof el.getBoundingClientRect !== 'function') return false;
@@ -1839,17 +1845,26 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
 
     function setValue(input, value) {
+      checkCancelled();
       const proto = Object.getPrototypeOf(input);
       const desc = Object.getOwnPropertyDescriptor(proto, 'value');
       if (desc?.set) desc.set.call(input, value); else input.value = value;
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      checkCancelled();
       input.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     function normalized(value){return String(value||'').normalize('NFKC').toLowerCase().replace(/[^0-9a-z가-힣]+/g,'');}
 
     return {
+      isThemeSelected(themeName){
+        checkCancelled();const target=normalized(themeName),sel=doc.querySelector('select#theme,select[name="theme"]');
+        const option=sel?.selectedOptions?.[0]||sel?.options?.[sel?.selectedIndex];
+        const value=normalized(textOf(option));
+        return !!target&&!!value&&!!option?.value&&!option.disabled&&(value===target||(target.length>=4&&(value.includes(target)||target.includes(value))));
+      },
       async selectThemeByName(themeName, branchName, branchId) {
+        checkCancelled();
         const target=normalized(themeName); if(!target)return false;
         const optionMatches=(optionTarget,candidate)=>{
           const value=normalized(candidate);
@@ -1877,20 +1892,21 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           return !!current&&optionMatches(target,textOf(current));
         };
         const triggerJqueryChange=(sel,value)=>{
+          checkCancelled();
           try{
             const jq=win?.jQuery||win?.$;
             if(typeof jq!=='function')return false;
             const wrapped=jq(sel);
             if(!wrapped?.val||!wrapped?.trigger)return false;
-            wrapped.val(value).trigger('change');
+            wrapped.val(value);checkCancelled();wrapped.trigger('change');checkCancelled();
             return true;
-          }catch{return false;}
+          }catch(error){if(error?.stage==='cancelled')throw error;return false;}
         };
         const waitForThemeOption=async (waitMs)=>{
           const until=Date.now()+Math.max(0,Number(waitMs)||0);
           let found=findThemeOption();
           while(!found&&Date.now()<until){
-            await sleep(50);
+            await sleep(50);checkCancelled();
             found=findThemeOption();
           }
           return found;
@@ -1928,14 +1944,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
         setValue(found.sel,found.option.value);
         for(let i=0;i<25;i++){
-          await sleep(40);
+          await sleep(40);checkCancelled();
           if(selectedThemeMatches())return true;
         }
 
         const refreshed=findThemeOption();
         if(refreshed&&triggerJqueryChange(refreshed.sel,refreshed.option.value)){
           for(let i=0;i<50;i++){
-            await sleep(40);
+            await sleep(40);checkCancelled();
             if(selectedThemeMatches())return true;
           }
         }
@@ -3778,6 +3794,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const text={
       'login-required':'로그인 필요 · 로그인 후 예약 페이지에서 다시 시작해 주세요.',
       'date-disabled':'날짜 미오픈 · 오픈 시각과 목표 날짜를 확인해 주세요.',
+      'theme-missing':'테마 선택 실패 · 지점과 테마 목록을 확인해 주세요.',
       'date-missing':'날짜 선택 실패 · 목표 날짜를 직접 확인해 주세요.',
       'sessions-not-loaded':'회차 로딩 실패 · 목표 날짜를 확인하고 새로고침해 주세요.',
       'session-container-missing':'회차 로딩 실패 · 목표 날짜를 확인하고 새로고침해 주세요.',
@@ -3913,7 +3930,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.62'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.63'))>0?String(settings.updateRemoteVersion):''};
     if(deps.isSubmissionCheckpoint(checkpoint))state.statusText=runStatusText({stage:checkpoint.stage});
     let runGeneration=0,activeRun=null,pendingPreparation=null;
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
@@ -4025,7 +4042,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
       viewState.dockStatus=watchContext?viewState.watchStatus:viewState.statusText;
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.62');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.63');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -4198,7 +4215,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.62');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.63');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);

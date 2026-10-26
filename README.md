@@ -9,7 +9,7 @@ Personal escape-room / reservation helper.
 Both platforms use the same public `ticket-helper.user.js` and the same GitHub sync format.
 
 ## Current releases
-- Userscript core v0.1.62
+- Userscript core v0.1.63
 - PC Tampermonkey userscript: recommended
 - iPhone Safari + Userscripts
 - Legacy unpacked PC extension v0.1.24
@@ -102,3 +102,6 @@ Charcoal header, flat white sections and teal accents. Saved reservation-user de
 
 ### v0.1.62
 네이버 최종 예약 후 완료 표시·매진·필수 입력·추가 인증을 구분합니다. 불명확하면 직접 확인 상태를 유지합니다. 최종 처리 기록은 새로고침/탭 복귀로 재실행하지 않고, 다시 준비하려면 중지 또는 설정 변경으로 초기화합니다. 로그는 고정 상태/이유 코드만 남깁니다. 방탈출 검사44개 통과. 이번 결과 감지는 합성 화면 검사이며, 실제 예약/결제는 실행하지 않았습니다.
+
+### v0.1.63
+키이스케이프 STATION 세 테마의 직접 주소를 반영했습니다. 새로고침 후 테마 목록이 비거나 지점 주소만 있는 상태를 선택 완료로 오인하지 않고 테마를 다시 불러옵니다. 기존 설정은 유지합니다. 방탈출 검사45개 통과. 실제 예약/결제는 실행하지 않았으며 아이폰에서 새 버전 확인이 필요합니다.
