@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.65
+// @version      0.1.66
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.65";
+globalThis.TICKET_HELPER_VERSION="0.1.66";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -2547,10 +2547,17 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     syncState:'ticket-helper:sync-state'
   });
 
+  function clearRestoredExecutionState(settings={}){
+    return {...settings,pendingTargetScan:false,pendingTargetScanProfileId:'',pendingTargetScanTargetDate:'',pendingTargetScanResetCount:0,pendingTargetScanNavigateCount:0,availabilityWatch:null,statusText:'설정 적용 완료 · 다시 준비해 주세요.',watchStatus:'취소표 확인 중지'};
+  }
+  function validateReplacementProfiles(profiles){
+    if(!Array.isArray(profiles)||profiles.some(profile=>!deps.validateThemeProfile(profile).ok)||new Set(profiles.map(profile=>profile.id)).size!==profiles.length)throw new TypeError('프로필 형식을 확인해 주세요. 손상되거나 중복된 항목은 가져올 수 없습니다.');
+  }
   function createTicketStorage(gm) {
     if (!gm || typeof gm.getValue !== 'function' || typeof gm.setValue !== 'function') throw new TypeError('GM storage adapter required');
     const clone=(value)=>{try{return JSON.parse(JSON.stringify(value))}catch{return value}};
     let checkpointWrites=Promise.resolve(),settingsWrites=Promise.resolve();
+    const writeSettings=operation=>{const result=settingsWrites.then(operation);settingsWrites=result.catch(()=>{});return result;};
     const writeCheckpoint=operation=>{
       const result=checkpointWrites.then(operation);
       checkpointWrites=result.catch(()=>{});
@@ -2576,11 +2583,13 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }
         return [];
       },
-      async setProfiles(profiles){
-        const normalized=Array.isArray(profiles)?profiles:[];
+      setProfiles(profiles){
+        const normalized=clone(Array.isArray(profiles)?profiles:[]);
+        return writeSettings(async()=>{
         const current=await gm.getValue(KEYS.profiles,null);
         if(Array.isArray(current))await snapshot('before-profiles-write');
         await gm.setValue(KEYS.profiles,normalized);
+        });
       },
       async saveObservedSchedule(profileId,targetDate,sessions,observedAt=Date.now()){
         const profiles=await this.getProfiles(); const index=profiles.findIndex(p=>p.id===profileId);
@@ -2602,15 +2611,13 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }
         return {};
       },
-      setSettings(settings){
+      setSettings(settings,{skipBackup=false}={}){
         const normalized=clone(settings&&typeof settings==='object'&&!Array.isArray(settings)?settings:{});
-        const result=settingsWrites.then(async()=>{
+        return writeSettings(async()=>{
           const current=await gm.getValue(KEYS.settings,null);
-          if(current&&typeof current==='object'&&!Array.isArray(current))await snapshot('before-settings-write');
+          if(!skipBackup&&current&&typeof current==='object'&&!Array.isArray(current))await snapshot('before-settings-write');
           await gm.setValue(KEYS.settings,normalized);
         });
-        settingsWrites=result.catch(()=>{});
-        return result;
       },
       async getAutoBackup(){ return await gm.getValue(KEYS.backup,null); },
       async getSyncConfig(){ const v=await gm.getValue(KEYS.syncConfig,null); return v&&typeof v==='object'&&!Array.isArray(v)?v:null; },
@@ -2618,26 +2625,46 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       async getSyncState(){ const v=await gm.getValue(KEYS.syncState,null); return v&&typeof v==='object'&&!Array.isArray(v)?v:null; },
       async setSyncState(value){ await gm.setValue(KEYS.syncState,value&&typeof value==='object'?value:null); },
       async createAutoBackup(reason='manual'){ return snapshot(reason); },
-      async restoreAutoBackup(){
-        const backup=await gm.getValue(KEYS.backup,null);
-        if(!Array.isArray(backup?.profiles)||!backup?.settings||typeof backup.settings!=='object')return null;
+      restoreAutoBackup(confirmedBackup){
+        const confirmed=confirmedBackup===undefined?null:clone(confirmedBackup);
+        return writeSettings(async()=>{
+        const backup=confirmed||await gm.getValue(KEYS.backup,null);
+        if(!Array.isArray(backup?.profiles)||!backup?.settings||typeof backup.settings!=='object'||Array.isArray(backup.settings))return null;
+        validateReplacementProfiles(backup.profiles);
         const currentProfiles=await gm.getValue(KEYS.profiles,[]);
         const currentSettings=await gm.getValue(KEYS.settings,{});
-        await gm.setValue(KEYS.backup,{version:1,at:Date.now(),reason:'before-restore',profiles:clone(Array.isArray(currentProfiles)?currentProfiles:[]),settings:clone(currentSettings&&typeof currentSettings==='object'?currentSettings:{})});
-        await gm.setValue(KEYS.profiles,clone(backup.profiles));
-        await gm.setValue(KEYS.settings,clone(backup.settings));
-        return {profiles:clone(backup.profiles),settings:clone(backup.settings),restoredAt:backup.at||0};
+        const settings=clearRestoredExecutionState(clone(backup.settings));
+        const selected=backup.profiles.find(p=>p.id===settings.profileId)||backup.profiles[0];
+        Object.assign(settings,{profileId:selected?.id||'',siteId:selected?.siteId||'',branchId:String(selected?.branchId||'')});
+        try{
+          await gm.setValue(KEYS.backup,{version:1,at:Date.now(),reason:'before-restore',profiles:clone(Array.isArray(currentProfiles)?currentProfiles:[]),settings:clone(currentSettings&&typeof currentSettings==='object'?currentSettings:{})});
+          await gm.setValue(KEYS.profiles,clone(backup.profiles));
+          await gm.setValue(KEYS.settings,settings);
+          return {profiles:clone(backup.profiles),settings:clone(settings),restoredAt:backup.at||0};
+        }catch(error){
+          for(const [key,value] of [[KEYS.profiles,currentProfiles],[KEYS.settings,clearRestoredExecutionState(currentSettings)],[KEYS.backup,backup]]){
+            try{await gm.setValue(key,clone(value));}catch{}
+          }
+          throw error;
+        }
+        });
       },
       async exportProfiles(){
         const profiles = await this.getProfiles();
         return JSON.stringify((profiles || []).map((p) => deps.sanitizeProfileExport ? deps.sanitizeProfileExport(p) : p), null, 2);
       },
-      async importProfiles(json){
+      async importProfiles(json,replacementSettings,reason='before-import'){
         const parsed = typeof json === 'string' ? JSON.parse(json) : json;
         if (!Array.isArray(parsed)) throw new TypeError('profile import must be an array');
-        await this.createAutoBackup('before-import');
-        await gm.setValue(KEYS.profiles,parsed);
-        return parsed;
+        validateReplacementProfiles(parsed);
+        const profiles=clone(parsed);
+        const settings=replacementSettings===undefined?null:clearRestoredExecutionState(clone(replacementSettings));
+        if(settings){const selected=profiles.find(p=>p.id===settings.profileId)||profiles[0];Object.assign(settings,{profileId:selected?.id||'',siteId:selected?.siteId||'',branchId:String(selected?.branchId||'')});}
+        return writeSettings(async()=>{
+          const before=await snapshot(reason);
+          try{await gm.setValue(KEYS.profiles,profiles);if(settings)await gm.setValue(KEYS.settings,settings);return profiles;}
+          catch(error){if(before)for(const [key,value] of [[KEYS.profiles,before.profiles],[KEYS.settings,clearRestoredExecutionState(before.settings)]]){try{await gm.setValue(key,clone(value));}catch{}}throw error;}
+        });
       }
     };
   }
@@ -2678,7 +2705,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     throw new Error('Persistent storage unavailable. Open Userscripts popup once, keep the script enabled, then reload Safari.');
   }
 
-  return { TICKET_STORAGE_KEYS: KEYS, createTicketStorage, createBrowserGM };
+  return { TICKET_STORAGE_KEYS: KEYS, clearRestoredExecutionState, validateReplacementProfiles, createTicketStorage, createBrowserGM };
 });
 
 
@@ -3658,6 +3685,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const readiness=reservationReadiness(profiles.find(p=>p.id===state.profileId),state,localUser,viewState.preparationPage);
     if(viewState.waiting&&Number.isFinite(viewState.waitingOpenAtMs))readiness.openAtMs=viewState.waitingOpenAtMs;
     updatePreparationStatus(rootNode,readiness);
+    if(viewState.configurationBusy){
+      for(const control of rootNode.querySelectorAll('button,input,select,textarea'))control.disabled=true;
+      const workspace=rootNode.querySelector('.th-panel-workspace');workspace?.setAttribute('aria-busy','true');
+      workspace?.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();},{capture:true});
+    }
     restorePanelUiState(rootNode,previousUi);
     return rootNode;
   }
@@ -4026,9 +4058,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.65'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.66'))>0?String(settings.updateRemoteVersion):''};
     if(deps.isSubmissionCheckpoint(checkpoint))state.statusText=runStatusText({stage:checkpoint.stage});
-    let runGeneration=0,activeRun=null,pendingPreparation=null,targetScanEpoch=0,targetScanActive=false;
+    let runGeneration=0,activeRun=null,pendingPreparation=null,targetScanEpoch=0,targetScanActive=false,configurationReplacement=false;
+    const configurationEdits=new Set();
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
     let lastLog=await gm.getValue('ticket-helper:last-safe-run-log',''),runLogEvents=[],attentionText='',audioContext=null;
     let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
@@ -4111,6 +4144,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       watchController.start({intervalSeconds:context.intervalSeconds,durationMinutes:context.durationMinutes,deadlineMs:context.deadlineMs,context:{profileId:p.id,targetDate:context.targetDate}});
     }
     async function prepareOnce(action){
+      if(configurationReplacement)return {stage:'configuration-busy'};
       if(pendingPreparation!==null||activeRun!==null)return {stage:'already-running'};
       if(deps.isSubmissionCheckpoint(checkpoint)){state.statusText='최종 버튼 처리 기록이 있습니다 · 결과 확인 후 중지 버튼으로 초기화해 주세요.';render();return {stage:'submission-locked'};}
       primeSound();
@@ -4129,7 +4163,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       const viewState=deps.buildOverlayState(p,schedule,{...state,openingText,fallbackThemes,adapterHealth:ctx.adapterId==='manual'?'목록·링크 지원':ctx.adapterId?'연습으로 확인 필요':'지원 페이지 아님',detectedThemeName:ctx.themeName,detectedBranchName:ctx.branchName,pageScan,panelOpen:isBookingPage||!!checkpoint,storageKind:storage.storageKind||gm.storageKind||'userscripts-gm',savedThemeCount:profiles.length,backupAt:Number(backupInfo?.at||0),compactView:state.compactView!==false});
       viewState.waiting=checkpoint?.stage==='armed';
       viewState.waitingOpenAtMs=checkpoint?.openTrigger?.openAtMs;
-      viewState.executionBusy=pendingPreparation!==null||activeRun!==null;
+      viewState.executionBusy=configurationReplacement||pendingPreparation!==null||activeRun!==null;
+      viewState.configurationBusy=configurationReplacement;
       viewState.submissionLocked=deps.isSubmissionCheckpoint(checkpoint);
       viewState.preparationPeople=localUser.participants||'';
       viewState.preparationPage=deps.inspectPreparationPage(p,state,doc,hostRoot);
@@ -4139,7 +4174,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
       viewState.dockStatus=watchContext?viewState.watchStatus:viewState.statusText;
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.65');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.66');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -4151,6 +4186,33 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     function cancelTargetScan(){
       targetScanEpoch++;targetScanActive=false;
       state.pendingTargetScan=false;state.pendingTargetScanProfileId='';state.pendingTargetScanTargetDate='';state.pendingTargetScanResetCount=0;state.pendingTargetScanNavigateCount=0;
+    }
+    function assertConfigurationReplaceAllowed(){
+      const error=new Error(configurationReplacement?'설정을 적용하고 있습니다. 완료 후 다시 시도해 주세요.':deps.isSubmissionCheckpoint(checkpoint)?'예약 결과를 확인한 뒤 중지 버튼으로 초기화해 주세요.':'예약·미리보기·취소표 확인을 중지한 뒤 설정을 가져와 주세요.');
+      error.stage=configurationReplacement?'configuration-busy':deps.isSubmissionCheckpoint(checkpoint)?'submission-locked':'execution-busy';
+      if(configurationReplacement||checkpoint||activeRun!==null||pendingPreparation!==null||targetScanActive||watchContext)throw error;
+    }
+    async function replaceConfiguration(action){
+      assertConfigurationReplaceAllowed();configurationReplacement=true;
+      cancelTargetScan();runGeneration++;clearReload();watchEpoch++;watchController?.stop('settings-replaced');pageScan=null;attentionText='';state.statusText='설정 적용 중 · 잠시 기다려 주세요.';render();
+      try{await Promise.allSettled([...configurationEdits].map(edit=>edit.done));await storage.clearCheckpoint();const result=await action();state.statusText='설정 적용 완료 · 다시 준비해 주세요.';return result;}
+      catch(error){state.statusText='설정 적용 실패 · 백업과 설정을 확인해 주세요.';throw error;}
+      finally{configurationReplacement=false;render();}
+    }
+    function configurationEditHandlers(handlers){
+      for(const name of ['onChange','onToggleCompact','onEditPrepared','onCopyPlanToDate','onWatchStop','onStop','onSessionPriority','onClearSessionPriority','onAddHour','onRemoveHour','onAddCurrent']){
+        const handler=handlers[name];if(typeof handler!=='function')continue;
+        handlers[name]=(...args)=>{
+          if(configurationReplacement)return Promise.resolve({stage:'configuration-busy'});
+          const edit={};configurationEdits.add(edit);
+          try{edit.done=Promise.resolve(handler(...args));return edit.done.finally(()=>configurationEdits.delete(edit));}
+          catch(error){configurationEdits.delete(edit);throw error;}
+        };
+      }
+      return handlers;
+    }
+    function selectReplacementProfile(){
+      const selected=profiles.find(p=>p.id===state.profileId)||profiles[0];state.profileId=selected?.id||'';state.siteId=selected?.siteId||'';state.branchId=String(selected?.branchId||'');
     }
     async function disarmForEdit(field){
       if(!['site','branch','profile','target-date','mode','profile-days-before','profile-open-time','local-name','local-phone','local-participants'].includes(field)&&!String(field).startsWith('plan-'))return;
@@ -4204,19 +4266,25 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       return deps.createGitHubSyncClient({request:(details)=>gm.xmlHttpRequest(details),repoFullName:syncConfig.repoFullName||'omjun0807-del/ticket-helper-private'});
     }
     async function setSyncState(next){syncState={...syncState,...next};await storage.setSyncState?.(syncState);syncStatusText=String(syncState.status||syncStatusText||'대기');}
+    async function refreshReplacementMetadata(){
+      try{backupInfo=await storage.getAutoBackup?.()||null;await markSyncDirty();}
+      catch{if(syncTimer!==null)hostRoot.clearTimeout?.(syncTimer);syncTimer=null;attentionText='설정은 적용됐습니다. 동기화 상태 저장에 실패해 자동 동기화를 중지했습니다.';syncStatusText='동기화 상태 저장 실패 · 수동 확인 필요';}
+    }
     async function markSyncDirty(){await setSyncState({localUpdatedAt:Date.now(),dirty:true,status:syncConfig.autoSync&&syncConfig.token?'변경 감지 · 동기화 대기':'로컬 변경 있음'});if(syncConfig.autoSync&&syncConfig.token)scheduleAutoSync(1600);}
     function scheduleAutoSync(delay=1600){if(!syncConfig.autoSync||!syncConfig.token)return;if(syncTimer!==null)hostRoot.clearTimeout?.(syncTimer);syncTimer=hostRoot.setTimeout?.(()=>{syncTimer=null;performGitHubSync('auto').catch(()=>{});},delay);}
     async function applyRemoteSync(remote){
       const payload=remote?.payload;
       if(!payload||Number(payload.schemaVersion)!==1||!Array.isArray(payload.profiles))throw new Error('원격 동기화 파일 형식이 올바르지 않습니다.');
-      profiles=payload.profiles;
+      deps.validateReplacementProfiles(payload.profiles);
+      return replaceConfiguration(async()=>{
       const remoteSettings=deps.sanitizeSyncSettings(payload.settings||{});
-      Object.assign(state,remoteSettings);
-      const existing=await storage.getSettings();
-      await storage.setProfiles(profiles);
-      await storage.setSettings({...existing,...remoteSettings});
-      await setSyncState({localUpdatedAt:Number(payload.updatedAt||Date.now()),lastRemoteUpdatedAt:Number(payload.updatedAt||0),lastSyncAt:Date.now(),dirty:false,status:'동기화 완료 · 내려받음'});
-      render();return payload;
+      const nextSettings=deps.clearRestoredExecutionState({...state,...remoteSettings});
+      profiles=await storage.importProfiles(payload.profiles,nextSettings,'before-sync-pull');
+      Object.assign(state,nextSettings);selectReplacementProfile();
+      try{await setSyncState({localUpdatedAt:Number(payload.updatedAt||Date.now()),lastRemoteUpdatedAt:Number(payload.updatedAt||0),lastSyncAt:Date.now(),dirty:false,status:'동기화 완료 · 내려받음'});}
+      catch{if(syncTimer!==null)hostRoot.clearTimeout?.(syncTimer);syncTimer=null;attentionText='설정은 적용됐습니다. 동기화 상태 저장에 실패해 자동 동기화를 중지했습니다.';syncStatusText='동기화 상태 저장 실패 · 수동 확인 필요';}
+      return payload;
+      });
     }
     async function pushLocalSync(client,updatedAt=Date.now()){
       const stamp=Number(updatedAt)||Date.now();
@@ -4226,10 +4294,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       render();return payload;
     }
     async function performGitHubSync(mode='auto'){
-      if(mode==='auto'&&(activeRun||checkpoint?.autoContinue)){scheduleAutoSync(5000);return {status:'deferred'};}
+      if(mode==='auto'&&(configurationReplacement||activeRun!==null||pendingPreparation!==null||checkpoint||targetScanActive||watchContext)){scheduleAutoSync(5000);return {status:'deferred'};}
       if(syncBusy)return {status:'busy'};
       syncBusy=true;syncStatusText='GitHub 확인 중…';render();
       try{
+        if(mode==='pull')assertConfigurationReplaceAllowed();
         const client=githubSyncClient();
         const remote=await client.pull(syncConfig.token);
         if(mode==='test'){await setSyncState({lastSyncAt:Date.now(),status:remote.exists?'연결 정상 · 동기화 파일 있음':'연결 정상 · 첫 업로드 필요'});render();return {status:'ok'};}
@@ -4246,6 +4315,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if(decision==='conflict'){await setSyncState({status:'동기화 충돌 · 수동으로 내려받기/업로드 선택'});render();return {status:'conflict'};}
         await setSyncState({lastSyncAt:Date.now(),lastRemoteUpdatedAt:Number(remote.payload?.updatedAt||0),status:'동기화 최신'});render();return {status:'noop'};
       }catch(err){
+        if(['configuration-busy','execution-busy','submission-locked'].includes(err?.stage)){await setSyncState({status:'설정 교체 보류 · 실행 중지 후 다시 내려받아 주세요.'});render();if(mode!=='auto')hostRoot.alert?.(err.message);return {status:'deferred'};}
         await setSyncState({status:'동기화 오류'});render();
         if(mode!=='auto')hostRoot.alert?.('GitHub 동기화 실패: '+String(err?.message||err));
         return {status:'error',error:err};
@@ -4317,7 +4387,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.65');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.66');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
@@ -4508,26 +4578,34 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
 
     render=deps.createPanelRenderScheduler(host.shadowRoot||host.attachShadow({mode:'open'}),()=>{
       const {profile,schedule,viewState}=viewData();
-      deps.mountUserscriptPanel(host,{profiles,state,viewState,localUser,syncConfig:syncUiConfig(),
-        onChange:async (cfg,field,needsRerender)=>{try{await disarmForEdit(field);if(['plan-open-date','plan-open-time'].includes(field)&&cfg.bookingPlan?.oneOffOpenAt&&/(?:T$|^T)/.test(cfg.bookingPlan.oneOffOpenAt))return;const saving=persistConfig(cfg,field);if(needsRerender)render();await saving;if(needsRerender||['target-date','plan-selection-mode'].includes(field))render();else deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser,deps.inspectPreparationPage(selectedProfile(),state,doc,hostRoot)));}catch(error){hostRoot.alert?.(String(error.message||error));}},
-        onLocalUserInput:cfg=>{disarmForEdit('local-name').catch(()=>{});localUser={name:cfg.localName||'',phone:cfg.localPhone||'',participants:cfg.localParticipants||''};deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser,deps.inspectPreparationPage(selectedProfile(),state,doc,hostRoot)));if(localUserSaveTimer!==null)hostRoot.clearTimeout?.(localUserSaveTimer);localUserSaveTimer=hostRoot.setTimeout?.(()=>{storage.setLocalUser(localUser).catch?.(()=>{});localUserSaveTimer=null;},400);},
+      deps.mountUserscriptPanel(host,configurationEditHandlers({profiles,state,viewState,localUser,syncConfig:syncUiConfig(),
+        onChange:async (cfg,field,needsRerender)=>{if(configurationReplacement)return {stage:'configuration-busy'};try{await disarmForEdit(field);if(['plan-open-date','plan-open-time'].includes(field)&&cfg.bookingPlan?.oneOffOpenAt&&/(?:T$|^T)/.test(cfg.bookingPlan.oneOffOpenAt))return;const saving=persistConfig(cfg,field);if(needsRerender)render();await saving;if(needsRerender||['target-date','plan-selection-mode'].includes(field))render();else deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser,deps.inspectPreparationPage(selectedProfile(),state,doc,hostRoot)));}catch(error){hostRoot.alert?.(String(error.message||error));}},
+        onLocalUserInput:cfg=>{if(configurationReplacement)return;disarmForEdit('local-name').catch(()=>{});localUser={name:cfg.localName||'',phone:cfg.localPhone||'',participants:cfg.localParticipants||''};deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser,deps.inspectPreparationPage(selectedProfile(),state,doc,hostRoot)));if(localUserSaveTimer!==null)hostRoot.clearTimeout?.(localUserSaveTimer);localUserSaveTimer=hostRoot.setTimeout?.(()=>{storage.setLocalUser(localUser).catch?.(()=>{});localUserSaveTimer=null;},400);},
         onToggleCompact:async()=>{state.compactView=state.compactView===false;await storage.setSettings(state);await markSyncDirty();render();},
         onSyncConfig:async cfg=>saveSyncConfigFromUi(cfg),
         onSyncTest:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('test');},
         onSyncPull:async cfg=>{await saveSyncConfigFromUi(cfg);if(syncState.dirty&&!hostRoot.confirm?.('이 기기의 아직 동기화되지 않은 변경사항을 원격 설정으로 덮어쓸까요?'))return;return performGitHubSync('pull');},
         onSyncPush:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('push');},
-        onStop:async()=>{cancelTargetScan();runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('stopped');watchContext=null;state.availabilityWatch=null;checkpoint=null;attentionText='';state.statusText='실행 중지';await storage.clearCheckpoint();await storage.setSettings(state);recordRun('cancelled');render();},
+        onStop:async()=>{if(configurationReplacement)return {stage:'configuration-busy'};cancelTargetScan();runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('stopped');watchContext=null;state.availabilityWatch=null;checkpoint=null;attentionText='';state.statusText='실행 중지';await storage.clearCheckpoint();await storage.setSettings(state);recordRun('cancelled');render();},
         onEditPrepared:async()=>{try{await disarmForEdit('plan-edit');render();}catch(error){hostRoot.alert?.(String(error.message||error));}},
         onCopyPlanToDate:async()=>{await stopForPlanCopy();},
         onCopyRunLog:async()=>{const text=lastLog||deps.createSafeRunLog([],{});try{if(!hostRoot.navigator?.clipboard?.writeText)throw Error('clipboard-unavailable');await hostRoot.navigator.clipboard.writeText(text);state.statusText='실행 기록 복사 완료';render();}catch{hostRoot.prompt?.('개인정보를 제외한 실행 기록입니다.',text);}},
         onWatchStart:cfg=>prepareOnce(()=>startWatchFromUi(cfg)).catch(error=>hostRoot.alert?.(String(error.message||error))),
         onWatchStop:async()=>{watchEpoch++;watchController?.stop('stopped');watchContext=null;state.availabilityWatch=null;state.watchStatus='취소표 확인 중지';await storage.setSettings(state);render();},
-        onImport:async()=>{const raw=hostRoot.prompt?.('백업한 프로필 JSON을 붙여넣으세요.','')||'';if(!raw.trim())return;profiles=await storage.importProfiles(raw);state.profileId=profiles[0]?.id||'';await storage.setSettings(state);await markSyncDirty();render();},
-        onRestoreBackup:async()=>{const backup=await storage.getAutoBackup?.();if(!backup?.profiles){hostRoot.alert?.('복구할 자동 백업이 없습니다.');return;}const when=backup.at?new Date(backup.at).toLocaleString('ko-KR'):'최근';if(!hostRoot.confirm?.(`${when} 자동 백업으로 테마/회차/설정을 되돌릴까요? 이름·연락처는 변경하지 않습니다.`))return;const restored=await storage.restoreAutoBackup();if(!restored){hostRoot.alert?.('자동 백업 복구에 실패했습니다.');return;}profiles=restored.profiles||[];Object.assign(state,restored.settings||{});backupInfo=await storage.getAutoBackup?.()||null;await markSyncDirty();render();hostRoot.alert?.('자동 백업을 복구했습니다.');},
+        onImport:async()=>{try{
+          assertConfigurationReplaceAllowed();const raw=hostRoot.prompt?.('백업한 프로필 JSON을 붙여넣으세요.','')||'';if(!raw.trim())return;
+          const parsed=JSON.parse(raw);if(!Array.isArray(parsed))throw new TypeError('백업 프로필은 목록 형식이어야 합니다.');
+          return await replaceConfiguration(async()=>{profiles=await storage.importProfiles(parsed,{...state,profileId:parsed[0]?.id||''});Object.assign(state,deps.clearRestoredExecutionState(state));state.profileId=profiles[0]?.id||'';selectReplacementProfile();await refreshReplacementMetadata();});
+        }catch(error){hostRoot.alert?.(String(error.message||error));return {stage:error.stage||'configuration-invalid'};}},
+        onRestoreBackup:async()=>{try{
+          assertConfigurationReplaceAllowed();const backup=await storage.getAutoBackup?.();if(!backup?.profiles){hostRoot.alert?.('복구할 자동 백업이 없습니다.');return;}
+          const when=backup.at?new Date(backup.at).toLocaleString('ko-KR'):'최근';if(!hostRoot.confirm?.(`${when} 자동 백업으로 테마/회차/설정을 되돌릴까요? 이름·연락처는 변경하지 않습니다.`))return;
+          return await replaceConfiguration(async()=>{const restored=await storage.restoreAutoBackup(backup);if(!restored)throw new Error('자동 백업 복구에 실패했습니다.');profiles=restored.profiles||[];Object.assign(state,restored.settings||{});selectReplacementProfile();await refreshReplacementMetadata();hostRoot.alert?.('자동 백업을 복구했습니다.');});
+        }catch(error){hostRoot.alert?.(String(error.message||error));return {stage:error.stage||'configuration-invalid'};}},
         onExport:async()=>{const json=await storage.exportProfiles();if(hostRoot.navigator?.clipboard?.writeText){try{await hostRoot.navigator.clipboard.writeText(json);hostRoot.alert?.('백업 JSON을 클립보드에 복사했습니다.');return;}catch{}}hostRoot.prompt?.('아래 백업 JSON을 복사하세요.',json);},
         onCheckUpdate:async()=>checkUpdate(true),
         onScan:async()=>{try{pageScan={...detectCurrentPageContext(hostRoot.location.href,doc,profiles),sessions:[]};render();}catch(err){hostRoot.alert?.(`페이지 정보 확인 실패: ${String(err?.message||err)}`);}},
-        onScanTargetDate:async cfg=>{const saving=persistConfig(cfg,'target-date'),epoch=targetScanEpoch;targetScanActive=true;const cancelled=()=>epoch!==targetScanEpoch;try{
+        onScanTargetDate:async cfg=>{if(configurationReplacement)return {stage:'configuration-busy'};const saving=persistConfig(cfg,'target-date'),epoch=targetScanEpoch;targetScanActive=true;const cancelled=()=>epoch!==targetScanEpoch;try{
           await saving;if(cancelled())return;
           const p=profiles.find(x=>x.id===cfg.profileId)||selectedProfile();
           if(!p){hostRoot.alert?.('테마를 먼저 등록/선택해 주세요.');return;}
@@ -4571,7 +4649,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         onPrepare:cfg=>prepareOnce(async()=>{const generation=runGeneration;await persistConfig(cfg,'prepare');if(generation!==runGeneration)return {stage:'cancelled'};const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);return armOrExecute(selected,{...cfg,profileId:selected?.id||cfg.profileId});}),
         onPracticeNow:cfg=>prepareOnce(async()=>{const generation=runGeneration;await persistConfig(cfg,'prepare');if(generation!==runGeneration)return {stage:'cancelled'};const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const inPlace=canPracticeOnCurrentPage(selected,cfg);return armOrExecute(selected,{...cfg,mode:'practice',profileId:selected.id,bypassOpeningSchedule:true,skipTargetNavigation:inPlace,trustCurrentPageTheme:inPlace});}),
         onTimingTest:cfg=>prepareOnce(async()=>{const generation=runGeneration;await persistConfig(cfg,'prepare');if(generation!==runGeneration)return {stage:'cancelled'};const selected=profiles.find(p=>p.id===state.profileId||p.id===cfg.profileId);if(!selected||!cfg.targetDate){hostRoot.alert?.('테마와 목표 날짜를 먼저 선택해 주세요.');return null;}const result=await armTimingTest(selected,{...cfg,profileId:selected.id},10000);if(result?.stage==='timing-test-in-place')hostRoot.alert?.('10초 후 현재 불러온 회차에서 선택 → NEXT 흐름을 연습합니다. 미래 날짜 활성화는 실전 오픈 시각에 별도로 처리됩니다.');else if(result?.stage==='timing-test-armed')hostRoot.alert?.('10초 후 오픈 트리거 재개 흐름을 연습합니다.');return result;})
-      });
+      }));
       return {profile,schedule};
     },hostRoot);
 
