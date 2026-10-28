@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.66
+// @version      0.1.67
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.66";
+globalThis.TICKET_HELPER_VERSION="0.1.67";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -2548,7 +2548,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   });
 
   function clearRestoredExecutionState(settings={}){
-    return {...settings,pendingTargetScan:false,pendingTargetScanProfileId:'',pendingTargetScanTargetDate:'',pendingTargetScanResetCount:0,pendingTargetScanNavigateCount:0,availabilityWatch:null,statusText:'설정 적용 완료 · 다시 준비해 주세요.',watchStatus:'취소표 확인 중지'};
+    return {...settings,storageRecoveryPending:false,pendingTargetScan:false,pendingTargetScanProfileId:'',pendingTargetScanTargetDate:'',pendingTargetScanResetCount:0,pendingTargetScanNavigateCount:0,availabilityWatch:null,statusText:'설정 적용 완료 · 다시 준비해 주세요.',watchStatus:'취소표 확인 중지'};
   }
   function validateReplacementProfiles(profiles){
     if(!Array.isArray(profiles)||profiles.some(profile=>!deps.validateThemeProfile(profile).ok)||new Set(profiles.map(profile=>profile.id)).size!==profiles.length)throw new TypeError('프로필 형식을 확인해 주세요. 손상되거나 중복된 항목은 가져올 수 없습니다.');
@@ -2573,21 +2573,26 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
     return {
       storageKind:gm.storageKind||'unknown',
-      async getProfiles(){
+      getProfiles(){return writeSettings(async()=>{
         const current=await gm.getValue(KEYS.profiles,null);
         if(Array.isArray(current))return current;
         const backup=await gm.getValue(KEYS.backup,null);
-        if(Array.isArray(backup?.profiles)){
+        if(backup?.profiles!==undefined){
+          validateReplacementProfiles(backup.profiles);
+          const currentSettings=await gm.getValue(KEYS.settings,null);
+          const source=currentSettings&&typeof currentSettings==='object'&&!Array.isArray(currentSettings)?currentSettings:backup.settings;
+          if(!source||typeof source!=='object'||Array.isArray(source))throw new TypeError('자동 백업 설정 형식을 확인해 주세요.');
+          await gm.setValue(KEYS.settings,{...clearRestoredExecutionState(clone(source)),storageRecoveryPending:true});
           await gm.setValue(KEYS.profiles,clone(backup.profiles));
           return clone(backup.profiles);
         }
         return [];
-      },
-      setProfiles(profiles){
+      });},
+      setProfiles(profiles,{skipBackup=false}={}){
         const normalized=clone(Array.isArray(profiles)?profiles:[]);
         return writeSettings(async()=>{
         const current=await gm.getValue(KEYS.profiles,null);
-        if(Array.isArray(current))await snapshot('before-profiles-write');
+        if(!skipBackup&&Array.isArray(current))await snapshot('before-profiles-write');
         await gm.setValue(KEYS.profiles,normalized);
         });
       },
@@ -2601,16 +2606,18 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       async getCheckpoint(){ return await gm.getValue(KEYS.checkpoint, null); },
       setCheckpoint(checkpoint){const value=clone(checkpoint||null);return writeCheckpoint(()=>gm.setValue(KEYS.checkpoint,value));},
       clearCheckpoint(){return writeCheckpoint(()=>gm.deleteValue?gm.deleteValue(KEYS.checkpoint):gm.setValue(KEYS.checkpoint,null));},
-      async getSettings(){
+      getSettings(){return writeSettings(async()=>{
         const current=await gm.getValue(KEYS.settings,null);
         if(current&&typeof current==='object'&&!Array.isArray(current))return current;
         const backup=await gm.getValue(KEYS.backup,null);
-        if(backup?.settings&&typeof backup.settings==='object'&&!Array.isArray(backup.settings)){
-          await gm.setValue(KEYS.settings,clone(backup.settings));
-          return clone(backup.settings);
+        if(backup?.settings!==undefined){
+          if(!backup.settings||typeof backup.settings!=='object'||Array.isArray(backup.settings))throw new TypeError('자동 백업 설정 형식을 확인해 주세요.');
+          const settings={...clearRestoredExecutionState(clone(backup.settings)),storageRecoveryPending:true};
+          await gm.setValue(KEYS.settings,settings);
+          return clone(settings);
         }
         return {};
-      },
+      });},
       setSettings(settings,{skipBackup=false}={}){
         const normalized=clone(settings&&typeof settings==='object'&&!Array.isArray(settings)?settings:{});
         return writeSettings(async()=>{
@@ -3926,6 +3933,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       'next-button-missing':'다음 버튼을 찾지 못했습니다. 예약 화면을 직접 확인해 주세요.',
       'next-missing':'다음 버튼을 찾지 못했습니다. 예약 화면을 직접 확인해 주세요.',
       'next-button-ambiguous':'다음 버튼이 여러 개입니다. 직접 확인해 주세요.',
+      'recovery-paused':'설정 자동 복구 · 확인 후 다시 준비해 주세요.',
       'cancelled':'실행 중지',
       'awaiting-captcha':'자동등록방지 인증 대기 · 화면에서 직접 완료해 주세요.',
       'captcha-pending':'자동등록방지 인증 대기 · 화면에서 직접 완료해 주세요.',
@@ -4041,13 +4049,15 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const injectedGM=(typeof GM!=='undefined'&&GM)?GM:null; const gm=deps.createBrowserGM(hostRoot,injectedGM),storage=deps.createTicketStorage(gm);
     let profiles=await storage.getProfiles();
     const settings=await storage.getSettings();
+    const recoveryPending=settings.storageRecoveryPending===true;
     if(typeof deps.mergeBuiltinCatalog==='function'&&typeof deps.getBuiltinCatalogProfiles==='function'&&settings.catalogSeedVersion!==deps.BUILTIN_CATALOG_VERSION){
       profiles=deps.mergeBuiltinCatalog(profiles,deps.getBuiltinCatalogProfiles());
-      await storage.setProfiles(profiles);
+      await storage.setProfiles(profiles,{skipBackup:recoveryPending});
       settings.catalogSeedVersion=deps.BUILTIN_CATALOG_VERSION;
-      await storage.setSettings(settings);
+      await storage.setSettings(settings,{skipBackup:recoveryPending});
     }
     let checkpoint=await storage.getCheckpoint();
+    if(recoveryPending&&checkpoint&&!deps.isSubmissionCheckpoint(checkpoint)){checkpoint={...checkpoint,recoveryPreviousStage:checkpoint.recoveryPreviousStage||checkpoint.stage,stage:'recovery-paused',autoContinue:false};await storage.setCheckpoint(checkpoint);}
     if(deps.isSubmissionCheckpoint(checkpoint)&&checkpoint.autoContinue){checkpoint={...checkpoint,autoContinue:false};await storage.setCheckpoint(checkpoint);}
     let localUser=await storage.getLocalUser()||{};
     let syncConfig=await storage.getSyncConfig?.()||{repoFullName:'omjun0807-del/ticket-helper-private',token:'',autoSync:false,deviceId:''};
@@ -4058,12 +4068,13 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.66'))>0?String(settings.updateRemoteVersion):''};
-    if(deps.isSubmissionCheckpoint(checkpoint))state.statusText=runStatusText({stage:checkpoint.stage});
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.67'))>0?String(settings.updateRemoteVersion):''};
+    if(deps.isSubmissionCheckpoint(checkpoint)||checkpoint?.stage==='recovery-paused')state.statusText=runStatusText({stage:checkpoint.stage});
+    else if(recoveryPending)state.statusText=runStatusText({stage:'recovery-paused'});
     let runGeneration=0,activeRun=null,pendingPreparation=null,targetScanEpoch=0,targetScanActive=false,configurationReplacement=false;
     const configurationEdits=new Set();
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
-    let lastLog=await gm.getValue('ticket-helper:last-safe-run-log',''),runLogEvents=[],attentionText='',audioContext=null;
+    let lastLog=await gm.getValue('ticket-helper:last-safe-run-log',''),runLogEvents=[],attentionText=recoveryPending?'저장된 설정을 자동 복구했습니다. 테마와 날짜를 확인한 뒤 다시 준비해 주세요.':'',audioContext=null;
     let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
 
     let logWrites=Promise.resolve();
@@ -4174,7 +4185,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
       viewState.dockStatus=watchContext?viewState.watchStatus:viewState.statusText;
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.66');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.67');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -4366,6 +4377,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
     let updateBusy=false;
     async function checkUpdate(force=false){
+      if(!force&&recoveryPending)return {status:'recovery-paused'};
       if(updateBusy||!updateIsSafe()){if(force)hostRoot.alert?.('예약 진행 중이거나 오픈 직전입니다. 중지 후 예약 목록에서 업데이트해 주세요.');return {status:'deferred'};}
       if(hostRoot.TICKET_HELPER_EXTENSION){
         if(force)hostRoot.alert?.(`PC 확장판 v${hostRoot.TICKET_HELPER_EXTENSION.version||'?'}입니다. 확장 업데이트는 브라우저의 확장 프로그램 관리에서 적용됩니다.`);
@@ -4387,7 +4399,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.66');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.67');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
@@ -4664,7 +4676,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     doc.addEventListener?.('visibilitychange',()=>{if(doc.visibilityState!=='visible')return;watchController?.resume();if(checkpoint?.stage==='armed'&&activeRun===null&&pendingPreparation===null){clearReload();resumePersisted(checkpoint).catch(error=>notifyAttention(String(error.message||error)));}});
     if(updateIsSafe()) hostRoot.setTimeout?.(()=>{checkUpdate(false);},1500);
     doc.addEventListener?.('visibilitychange',()=>{if(doc.visibilityState==='visible'&&updateIsSafe())checkUpdate(false);});
-    if(syncConfig.autoSync&&syncConfig.token&&!checkpoint) scheduleAutoSync(2200);
+    if(syncConfig.autoSync&&syncConfig.token&&!checkpoint&&!recoveryPending) scheduleAutoSync(2200);
 
     if(settings.pendingTargetScan&&state.targetDate){
       const epoch=++targetScanEpoch;targetScanActive=true;const cancelled=()=>epoch!==targetScanEpoch;
