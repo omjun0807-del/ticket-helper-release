@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.63
+// @version      0.1.64
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.63";
+globalThis.TICKET_HELPER_VERSION="0.1.64";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1815,6 +1815,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   function createBrowserKeyescapePage(doc = document, win = window, options = {}) {
     const selectors = deps.KEYESCAPE_SELECTORS;
     const checkCancelled=()=>{if(options.isCancelled?.()){const error=new Error('실행이 중지되었습니다.');error.stage='cancelled';throw error;}};
+    const sleep=async ms=>{checkCancelled();await new Promise(resolve=>setTimeout(resolve,ms));checkCancelled();};
     const textOf = (el) => String(el?.innerText ?? el?.textContent ?? '').replace(/\s+/g, ' ').trim();
     const visible = (el) => {
       if (!el || typeof el.getBoundingClientRect !== 'function') return false;
@@ -1962,9 +1963,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         return info ? { year: info.year, month: info.month } : null;
       },
       async ensureCalendarVisible() {
+        checkCancelled();
         if (monthInfo()) return true;
         const waitForCalendar = async (el) => {
           if (!el) return false;
+          checkCancelled();
           try { el.click?.(); } catch {}
           for (let i = 0; i < 60; i++) {
             await sleep(40);
@@ -2015,6 +2018,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         return false;
       },
       async clickMonthArrow(dir) {
+        checkCancelled();
         const info = monthInfo();
         if (!info) return false;
         const box = calendarBox(info.element);
@@ -2032,6 +2036,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }
         candidates.sort((a, b) => a.d - b.d);
         if (!candidates[0]) return false;
+        checkCancelled();
         candidates[0].el.click();
         const old = `${info.year}-${info.month}`;
         for (let i = 0; i < 30; i++) {
@@ -2070,8 +2075,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         return { element:el, elements, id:el.id, text:String(day), enabled:enabledCandidates.length>0 };
       },
       clickElement(el) {
+        checkCancelled();
         if(!el)return false;
         try{el.scrollIntoView?.({block:'center',inline:'center',behavior:'instant'});}catch{}
+        checkCancelled();
         try{el.click?.();return true;}catch{return false;}
       },
       listSessionDescriptors() {
@@ -2543,7 +2550,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   function createTicketStorage(gm) {
     if (!gm || typeof gm.getValue !== 'function' || typeof gm.setValue !== 'function') throw new TypeError('GM storage adapter required');
     const clone=(value)=>{try{return JSON.parse(JSON.stringify(value))}catch{return value}};
-    let checkpointWrites=Promise.resolve();
+    let checkpointWrites=Promise.resolve(),settingsWrites=Promise.resolve();
     const writeCheckpoint=operation=>{
       const result=checkpointWrites.then(operation);
       checkpointWrites=result.catch(()=>{});
@@ -2595,11 +2602,15 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }
         return {};
       },
-      async setSettings(settings){
-        const normalized=settings&&typeof settings==='object'&&!Array.isArray(settings)?settings:{};
-        const current=await gm.getValue(KEYS.settings,null);
-        if(current&&typeof current==='object'&&!Array.isArray(current))await snapshot('before-settings-write');
-        await gm.setValue(KEYS.settings,normalized);
+      setSettings(settings){
+        const normalized=clone(settings&&typeof settings==='object'&&!Array.isArray(settings)?settings:{});
+        const result=settingsWrites.then(async()=>{
+          const current=await gm.getValue(KEYS.settings,null);
+          if(current&&typeof current==='object'&&!Array.isArray(current))await snapshot('before-settings-write');
+          await gm.setValue(KEYS.settings,normalized);
+        });
+        settingsWrites=result.catch(()=>{});
+        return result;
       },
       async getAutoBackup(){ return await gm.getValue(KEYS.backup,null); },
       async getSyncConfig(){ const v=await gm.getValue(KEYS.syncConfig,null); return v&&typeof v==='object'&&!Array.isArray(v)?v:null; },
@@ -2811,11 +2822,12 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   }
   function createBrowserPartnerPage(doc,win,profile,options={}){
     let selected=null,refreshFrom=null,requestedDate=null,selectedBeat=null;
-    const sleep=ms=>new Promise(resolve=>win.setTimeout(resolve,ms));
+    const checkCancelled=()=>{if(options.isCancelled?.()){const error=new Error('실행이 중지되었습니다.');error.stage='cancelled';throw error;}};
+    const sleep=async ms=>{checkCancelled();await new Promise(resolve=>win.setTimeout(resolve,ms));checkCancelled();};
     const text=el=>String(el?.innerText||el?.textContent||'').trim();
     const field=selector=>doc.querySelector(selector);
     const setValue=(el,value)=>{if(!el)return false;el.value=String(value);el.dispatchEvent(new win.Event('input',{bubbles:true}));el.dispatchEvent(new win.Event('change',{bubbles:true}));return true;};
-    const wait=async test=>{const limit=profile.openingAttempt?Math.max(70,Number(profile.openingWaitMs)||420):8000;for(let i=0;i<Math.ceil(limit/50);i++){if(test())return true;await sleep(50);}return false;};
+    const wait=async test=>{const limit=profile.openingAttempt?Math.max(70,Number(profile.openingWaitMs)||420):8000;for(let i=0;i<Math.ceil(limit/50);i++){checkCancelled();if(test())return true;await sleep(50);}return false;};
     function beatCard(){
       const branch=field('select[name="s_zizum"]');
       if(String(branch?.value)!==String(profile.branchId))return null;
@@ -2856,6 +2868,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     return {
       navigationExpected:profile.adapterId!=='zeroworld',
       async selectTheme(){
+        checkCancelled();
         if(profile.adapterId==='beatphobia')return !!beatCard();
         if(profile.adapterId==='doom')return sessions().length>0;
         if(profile.adapterId==='zeroworld'){
@@ -2870,6 +2883,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         return title||data;
       },
       async selectDate(date){
+        checkCancelled();
         if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return false;
         if(profile.adapterId==='beatphobia'){requestedDate=date;selected=null;selectedBeat=null;return beatDateReady()&&field('input[name="rev_days"]')?.value===date;}
         if(profile.adapterId==='zeroworld'){
@@ -3870,20 +3884,25 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }catch{return String(url||'');}
   }
 
-  async function scanTargetDateSessions({profile,targetDate,doc=hostRoot.document,win=hostRoot,helpers=deps,pollMs=80,maxWaitMs=8000,skipLocationNavigation=false,sleep=(ms)=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+  async function scanTargetDateSessions({profile,targetDate,doc=hostRoot.document,win=hostRoot,helpers=deps,pollMs=80,maxWaitMs=8000,skipLocationNavigation=false,isCancelled=()=>false,sleep=(ms)=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+    const stopped=()=>({ok:false,stage:'cancelled',message:'실행이 중지되었습니다.'});
+    if(isCancelled())return stopped();
+    try{
     if(!profile) return {ok:false,stage:'profile-missing',message:'테마를 먼저 선택하세요.'};
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(targetDate||''))) return {ok:false,stage:'date-missing',message:'목표 날짜를 먼저 선택하세요.'};
     const targetUrl=typeof helpers.prepareProfileTargetUrl==='function'?helpers.prepareProfileTargetUrl(profile,targetDate):(typeof helpers.prepareTargetUrl==='function'?helpers.prepareTargetUrl(profile.adapterId,profile.themeBookingUrl||profile.bookingUrl,targetDate):(profile.themeBookingUrl||profile.bookingUrl));
     const currentUrl=String(win?.location?.href||'');
     const locationMatches=typeof helpers.sameBookingLocation==='function'?helpers.sameBookingLocation(currentUrl,targetUrl):(!currentUrl||!targetUrl||currentUrl===targetUrl);
     if(currentUrl&&targetUrl&&!locationMatches&&!skipLocationNavigation) return {ok:false,stage:'navigating',message:'선택한 지점 예약 페이지로 이동합니다.',navigateTo:targetUrl};
-    const adapter=helpers.createPageAdapter?.(profile,doc,win);
+    const adapter=helpers.createPageAdapter?.(profile,doc,win,{isCancelled});
     if(!adapter) return {ok:false,stage:'adapter-missing',message:'현재 페이지에서 예약 어댑터를 만들 수 없습니다.'};
     if(typeof adapter.selectTheme==='function'){
       const themeSelected=await adapter.selectTheme(profile.themeName);
+      if(isCancelled())return stopped();
       if(!themeSelected?.ok)return themeSelected;
     }
     const selected=await adapter.selectTargetDate(targetDate);
+    if(isCancelled())return stopped();
     if(!selected?.ok){
       if(selected?.navigateTo) return {...selected,ok:false,navigateTo:selected.navigateTo};
       const calendarResetNeeded=profile.adapterId==='keyescape'
@@ -3896,14 +3915,18 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
     const started=Date.now();
     while(true){
+      if(isCancelled())return stopped();
       let sessions=[];
       try{sessions=await adapter.readSessions();}catch(err){
+        if(isCancelled()||err?.stage==='cancelled')return stopped();
         if(Date.now()-started>=maxWaitMs) return {ok:false,stage:err?.stage||'sessions-not-loaded',message:String(err?.message||err)};
       }
+      if(isCancelled())return stopped();
       if(Array.isArray(sessions)&&sessions.length) return {ok:true,sessions};
       if(Date.now()-started>=maxWaitMs) return {ok:false,stage:'sessions-not-loaded',message:'목표 날짜 회차가 아직 표시되지 않았습니다.'};
       await sleep(pollMs);
     }
+    }catch(error){if(isCancelled()||error?.stage==='cancelled')return stopped();throw error;}
   }
 
   async function bootTicketHelper(){
@@ -3930,9 +3953,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.63'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.64'))>0?String(settings.updateRemoteVersion):''};
     if(deps.isSubmissionCheckpoint(checkpoint))state.statusText=runStatusText({stage:checkpoint.stage});
-    let runGeneration=0,activeRun=null,pendingPreparation=null;
+    let runGeneration=0,activeRun=null,pendingPreparation=null,targetScanEpoch=0,targetScanActive=false;
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
     let lastLog=await gm.getValue('ticket-helper:last-safe-run-log',''),runLogEvents=[],attentionText='',audioContext=null;
     let reloadTimer=null, pageScan=null, backupInfo=await storage.getAutoBackup?.()||null, localUserSaveTimer=null, syncTimer=null, syncBusy=false, syncStatusText=String(syncState.status||'연결 안 됨');
@@ -3970,7 +3993,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       render();
     }
     async function stopForPlanCopy(){
-      runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('copied');watchContext=null;checkpoint=null;
+      cancelTargetScan();runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('copied');watchContext=null;checkpoint=null;
       const p=selectedProfile();if(p?.bookingPlan)p.bookingPlan={...p.bookingPlan,oneOffOpenAt:'',oneOffTargetDate:''};
       state.targetDate='';state.availabilityWatch=null;state.statusText='설정 복제 완료 · 새 이용 날짜를 선택해 주세요.';attentionText='';pageScan=null;
       await storage.clearCheckpoint();await storage.setProfiles(profiles);await storage.setSettings(state);render();
@@ -4042,7 +4065,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
       viewState.dockStatus=watchContext?viewState.watchStatus:viewState.statusText;
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.63');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.64');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -4051,9 +4074,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       return {profile:p,schedule,viewState};
     }
 
+    function cancelTargetScan(){
+      targetScanEpoch++;targetScanActive=false;
+      state.pendingTargetScan=false;state.pendingTargetScanProfileId='';state.pendingTargetScanTargetDate='';state.pendingTargetScanResetCount=0;state.pendingTargetScanNavigateCount=0;
+    }
     async function disarmForEdit(field){
       if(!['site','branch','profile','target-date','mode','profile-days-before','profile-open-time','local-name','local-phone','local-participants'].includes(field)&&!String(field).startsWith('plan-'))return;
-      if(!checkpoint&&activeRun===null&&pendingPreparation===null&&!watchContext&&watchController?.getState().phase!=='found')return;
+      const hadTargetScan=targetScanActive||state.pendingTargetScan;cancelTargetScan();
+      if(!checkpoint&&activeRun===null&&pendingPreparation===null&&!watchContext&&watchController?.getState().phase!=='found'&&!hadTargetScan)return;
       runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('settings-changed');watchContext=null;checkpoint=null;state.statusText='설정 변경 · 기존 대기 해제';state.watchStatus='설정 변경 · 취소표 확인 중지';attentionText='';state.availabilityWatch=null;
       await storage.clearCheckpoint();await storage.setSettings({...state});const label=host.shadowRoot?.querySelector('.th-run-state span:last-child');if(label)label.textContent='현재 상태 · '+state.statusText;const dock=host.shadowRoot?.querySelector('.th-dock-status');if(dock)dock.textContent=state.statusText;
     }
@@ -4215,7 +4243,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.63');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.64');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
@@ -4414,7 +4442,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         onSyncTest:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('test');},
         onSyncPull:async cfg=>{await saveSyncConfigFromUi(cfg);if(syncState.dirty&&!hostRoot.confirm?.('이 기기의 아직 동기화되지 않은 변경사항을 원격 설정으로 덮어쓸까요?'))return;return performGitHubSync('pull');},
         onSyncPush:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('push');},
-        onStop:async()=>{runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('stopped');watchContext=null;state.availabilityWatch=null;checkpoint=null;attentionText='';state.statusText='실행 중지';await storage.clearCheckpoint();await storage.setSettings(state);recordRun('cancelled');render();},
+        onStop:async()=>{cancelTargetScan();runGeneration++;activeRun=null;pendingPreparation=null;clearReload();watchEpoch++;watchController?.stop('stopped');watchContext=null;state.availabilityWatch=null;checkpoint=null;attentionText='';state.statusText='실행 중지';await storage.clearCheckpoint();await storage.setSettings(state);recordRun('cancelled');render();},
         onEditPrepared:async()=>{try{await disarmForEdit('plan-edit');render();}catch(error){hostRoot.alert?.(String(error.message||error));}},
         onCopyPlanToDate:async()=>{await stopForPlanCopy();},
         onCopyRunLog:async()=>{const text=lastLog||deps.createSafeRunLog([],{});try{if(!hostRoot.navigator?.clipboard?.writeText)throw Error('clipboard-unavailable');await hostRoot.navigator.clipboard.writeText(text);state.statusText='실행 기록 복사 완료';render();}catch{hostRoot.prompt?.('개인정보를 제외한 실행 기록입니다.',text);}},
@@ -4425,18 +4453,20 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         onExport:async()=>{const json=await storage.exportProfiles();if(hostRoot.navigator?.clipboard?.writeText){try{await hostRoot.navigator.clipboard.writeText(json);hostRoot.alert?.('백업 JSON을 클립보드에 복사했습니다.');return;}catch{}}hostRoot.prompt?.('아래 백업 JSON을 복사하세요.',json);},
         onCheckUpdate:async()=>checkUpdate(true),
         onScan:async()=>{try{pageScan={...detectCurrentPageContext(hostRoot.location.href,doc,profiles),sessions:[]};render();}catch(err){hostRoot.alert?.(`페이지 정보 확인 실패: ${String(err?.message||err)}`);}},
-        onScanTargetDate:async cfg=>{const generation=runGeneration;try{
-          await persistConfig(cfg,'target-date');
+        onScanTargetDate:async cfg=>{const saving=persistConfig(cfg,'target-date'),epoch=targetScanEpoch;targetScanActive=true;const cancelled=()=>epoch!==targetScanEpoch;try{
+          await saving;if(cancelled())return;
           const p=profiles.find(x=>x.id===cfg.profileId)||selectedProfile();
           if(!p){hostRoot.alert?.('테마를 먼저 등록/선택해 주세요.');return;}
           state.pendingTargetScanNavigateCount=0;
-          const result=await scanTargetDateSessions({profile:p,targetDate:cfg.targetDate,doc,win:hostRoot,helpers:deps});
+          const result=await scanTargetDateSessions({profile:p,targetDate:cfg.targetDate,doc,win:hostRoot,helpers:deps,isCancelled:cancelled});
+          if(cancelled())return;
           if(result?.reloadCurrentPage){
             state.pendingTargetScan=true;
             state.pendingTargetScanProfileId=p.id;
             state.pendingTargetScanTargetDate=cfg.targetDate;
             state.pendingTargetScanResetCount=Number(state.pendingTargetScanResetCount||0)+1;
-            await storage.setSettings(state);
+            await storage.setSettings({...state});
+            if(cancelled())return;
             hostRoot.location.href=calendarResetNavigationUrl(result.navigateTo||targetFor(p,cfg.targetDate));
             return;
           }
@@ -4446,7 +4476,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             state.pendingTargetScanTargetDate=cfg.targetDate;
             state.pendingTargetScanResetCount=Number(state.pendingTargetScanResetCount||0);
             state.pendingTargetScanNavigateCount=1;
-            await storage.setSettings(state);
+            await storage.setSettings({...state});
+            if(cancelled())return;
             hostRoot.location.href=result.navigateTo;
             return;
           }
@@ -4454,10 +4485,10 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
           pageScan={...ctx,sessions:result.sessions,profileId:p.id,targetDate:cfg.targetDate};
           const updated=await storage.saveObservedSchedule(p.id,cfg.targetDate,result.sessions,Date.now());
-          if(generation!==runGeneration)return;
-        if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;await markSyncDirty();}
+          if(cancelled())return;
+        if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;await markSyncDirty();if(cancelled())return;}
           render();
-        }catch(err){hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(err?.message||err)}`);}},
+        }catch(err){if(!cancelled())hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(err?.message||err)}`);}finally{if(!cancelled())targetScanActive=false;}},
         onSessionPriority:async (cfg,time)=>{const p=profiles.find(x=>x.id===cfg.profileId);if(!p){return} if(!cfg.targetDate){hostRoot.alert?.('목표 날짜를 먼저 선택해 주세요.');return;} await disarmForEdit('plan-priority'); const sessions=pageScan?.sessions||[]; if(sessions.length){const updated=deps.saveObservedSchedule(p,cfg.targetDate,sessions,Date.now());const i=profiles.findIndex(x=>x.id===p.id);profiles[i]=updated;} const i=profiles.findIndex(x=>x.id===p.id);const kind=deps.dayKind(cfg.targetDate);const templates={...(profiles[i].sessionTemplates||{})};const tpl={...(templates[kind]||{kind,times:[],userPriority:[],mismatchPolicy:'exact-then-nearest'})};const priority=Array.isArray(tpl.userPriority)?tpl.userPriority.slice():[];const pos=priority.indexOf(time);if(pos>=0)priority.splice(pos,1);else priority.push(time);templates[kind]={...tpl,userPriority:priority};profiles[i]={...profiles[i],sessionTemplates:templates};await storage.setProfiles(profiles);await markSyncDirty();render();},
         onClearSessionPriority:async cfg=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0||!cfg.targetDate)return;await disarmForEdit('plan-priority');const kind=deps.dayKind(cfg.targetDate);const templates={...(profiles[i].sessionTemplates||{})};if(templates[kind])templates[kind]={...templates[kind],userPriority:[]};profiles[i]={...profiles[i],sessionTemplates:templates};await storage.setProfiles(profiles);await markSyncDirty();render();},
         onAddHour:async (cfg,hour)=>{const i=profiles.findIndex(x=>x.id===cfg.profileId);if(i<0)return;await disarmForEdit('plan-priority');profiles[i]={...profiles[i],timePriorities:deps.addHourPriority(profiles[i].timePriorities||[],hour)};await storage.setProfiles(profiles);await markSyncDirty();render();},
@@ -4484,6 +4515,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     if(syncConfig.autoSync&&syncConfig.token&&!checkpoint) scheduleAutoSync(2200);
 
     if(settings.pendingTargetScan&&state.targetDate){
+      const epoch=++targetScanEpoch;targetScanActive=true;const cancelled=()=>epoch!==targetScanEpoch;
       const pendingProfile=profiles.find(p=>p.id===settings.pendingTargetScanProfileId)||initialProfile;
       const pendingDate=String(settings.pendingTargetScanTargetDate||state.targetDate||'');
       const resetCount=Number(settings.pendingTargetScanResetCount||0);
@@ -4491,13 +4523,15 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       if(pendingProfile&&pendingDate){
         try{
           const skipLocationNavigation=!!pendingProfile.themeBookingUrl&&navigateCount>=1;
-          const result=await scanTargetDateSessions({profile:pendingProfile,targetDate:pendingDate,doc,win:hostRoot,helpers:deps,skipLocationNavigation});
+          const result=await scanTargetDateSessions({profile:pendingProfile,targetDate:pendingDate,doc,win:hostRoot,helpers:deps,skipLocationNavigation,isCancelled:cancelled});
+          if(cancelled())return true;
           if(result?.reloadCurrentPage&&resetCount<2){
             state.pendingTargetScan=true;
             state.pendingTargetScanProfileId=pendingProfile.id;
             state.pendingTargetScanTargetDate=pendingDate;
             state.pendingTargetScanResetCount=resetCount+1;
-            await storage.setSettings(state);
+            await storage.setSettings({...state});
+          if(cancelled())return true;
             hostRoot.location.href=calendarResetNavigationUrl(result.navigateTo||targetFor(pendingProfile,pendingDate),Date.now()+resetCount);
             return true;
           }
@@ -4508,7 +4542,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
               state.pendingTargetScanTargetDate='';
               state.pendingTargetScanResetCount=0;
               state.pendingTargetScanNavigateCount=0;
-              await storage.setSettings(state);
+              await storage.setSettings({...state});
+          if(cancelled())return true;
               hostRoot.alert?.('반복 페이지 이동을 차단했습니다. 현재 페이지에서 테마를 다시 인식해 주세요.');
               return true;
             }
@@ -4517,7 +4552,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             state.pendingTargetScanTargetDate=pendingDate;
             state.pendingTargetScanResetCount=resetCount;
             state.pendingTargetScanNavigateCount=navigateCount+1;
-            await storage.setSettings(state);
+            await storage.setSettings({...state});
+          if(cancelled())return true;
             hostRoot.location.href=result.navigateTo;
             return true;
           }
@@ -4526,7 +4562,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           state.pendingTargetScanTargetDate='';
           state.pendingTargetScanResetCount=0;
           state.pendingTargetScanNavigateCount=0;
-          await storage.setSettings(state);
+          await storage.setSettings({...state});
+          if(cancelled())return true;
           if(result?.ok){
             state.profileId=pendingProfile.id;
             state.siteId=pendingProfile.siteId||state.siteId;
@@ -4535,19 +4572,23 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
             const ctx=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
             pageScan={...ctx,sessions:result.sessions,profileId:pendingProfile.id,targetDate:pendingDate};
             const updated=await storage.saveObservedSchedule(pendingProfile.id,pendingDate,result.sessions,Date.now());
+            if(cancelled())return true;
         if(updated){const i=profiles.findIndex(x=>x.id===updated.id);if(i>=0)profiles[i]=updated;}
-            await storage.setSettings(state);
+            await storage.setSettings({...state});
+          if(cancelled())return true;
             render();
           }else{
             const preopen=['date-disabled','sessions-not-loaded'].includes(String(result?.stage||''));hostRoot.alert?.(preopen?'현재는 목표일 회차를 미리 볼 수 없습니다. 오픈 전/비활성 상태일 수 있습니다. 실전 실행은 계속 사용할 수 있습니다.':`목표일 회차 미리보기 실패: ${String(result?.message||result?.stage||'알 수 없는 오류')}`);
           }
         }catch(err){
+          if(cancelled())return true;
           state.pendingTargetScan=false;
           state.pendingTargetScanResetCount=0;
           state.pendingTargetScanNavigateCount=0;
-          await storage.setSettings(state);
+          await storage.setSettings({...state});
+          if(cancelled())return true;
           hostRoot.alert?.(`목표일 회차 불러오기 실패: ${String(err?.message||err)}`);
-        }
+        }finally{if(!cancelled())targetScanActive=false;}
       }
     }
 
