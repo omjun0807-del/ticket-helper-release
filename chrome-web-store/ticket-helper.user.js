@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.64
+// @version      0.1.65
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.64";
+globalThis.TICKET_HELPER_VERSION="0.1.65";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -3181,7 +3181,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       </section>
       <section class="th-card th-execution-card" aria-label="실행"><div class="th-card-heading"><span class="th-step">03</span><strong>실행</strong><span class="th-mode-badge">${state.mode==='confirm'?'예약 확정':state.mode==='live'?'실전':'연습'}</span></div>
       <div class="th-open-display"><span>예약 오픈</span><strong>${esc(viewState.openingText||'규칙·날짜 설정 필요')}</strong></div>
-      <div class="th-help th-readiness" role="status" aria-live="polite"><strong>예약 준비</strong><div data-preparation-summary></div><div data-opening-countdown></div></div>
+      <div class="th-help th-readiness"><details class="th-subsection" data-ui-section="preparation-checks"><summary>준비 점검 · <span data-preparation-summary role="status" aria-live="polite"></span></summary><ul class="th-preparation-checks" data-preparation-checks></ul></details><div data-opening-countdown></div></div>
       <div class="th-run-state"><span class="th-state-dot" aria-hidden="true"></span><span>현재 상태 · ${esc(viewState.statusText||'대기')}</span></div>
       <label>모드<select data-field="mode"><option value="practice"${state.mode==='practice'||!state.mode?' selected':''}>연습 · 확정 안 함</option><option value="live"${state.mode==='live'?' selected':''}>실전 · 예약확정 / 결제 직전</option><option value="confirm"${state.mode==='confirm'?' selected':''}>예약 확정까지 · 최종 결제 클릭</option></select></label>
       <div class="th-warning">확정 모드는 최종 결제 버튼까지 누릅니다. 추가 인증은 직접 진행해 주세요.</div>
@@ -3250,7 +3250,54 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const v=String(value||'').trim();
     return /^https?:\/\//i.test(v)?v:'';
   }
-  function reservationReadiness(profile,state={},user={}){
+  function inspectPreparationPage(profile,state={},doc,win){
+    const result={page:'unknown',theme:'unknown',date:'unknown'};
+    if(!profile||!win?.location?.href)return result;
+    try{
+      const current=new URL(win.location.href),target=new URL(profile.themeBookingUrl||profile.bookingUrl);
+      if(profile.adapterId==='naver-booking'&&current.hostname==='nid.naver.com')return {...result,page:'login'};
+      const host=url=>url.hostname.replace(/^www\./,'').replace(/^m\.booking\.naver\.com$/,'booking.naver.com');
+      if(host(current)!==host(target))return {...result,page:'different'};
+      const value=selector=>String(doc?.querySelector(selector)?.value||'');
+      if(profile.adapterId==='naver-booking'){
+        const route=/^\/booking\/(\d+)\/bizes\/(\d+)\/items\/(\d+)(?:\/|$)/;
+        const a=route.exec(current.pathname),b=route.exec(target.pathname);
+        if(!a||!b)return result;
+        if(a.slice(1).join('/')!==b.slice(1).join('/'))return {...result,page:'different'};
+        result.page='matching';result.theme='matching';
+        const date=current.searchParams.get('startDateTime')?.slice(0,10);
+        if(date)result.date=date===state.targetDate?'matching':'different';
+        return result;
+      }
+      if(profile.adapterId==='keyescape'){
+        if(!/\/reservation[12]\.php$/i.test(current.pathname))return result;
+        const branches=[value('select#zizum,select[name="zizum"]'),...current.searchParams.getAll('zizum_num')].filter(Boolean);
+        if(profile.branchId&&branches.some(branch=>String(branch)!==String(profile.branchId)))return {...result,page:'different'};
+        result.page=branches.length?'matching':'unknown';
+        const selected=doc?.querySelector('select#theme,select[name="theme"]')?.selectedOptions?.[0];
+        const clean=v=>String(v||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase();
+        if(selected?.value&&!selected.disabled&&clean(selected.textContent)&&clean(profile.themeName))result.theme=clean(selected.textContent)===clean(profile.themeName)?'matching':'different';
+        return result;
+      }
+      const expectedPath=target.pathname.replace(/\/$/,'');
+      if(current.pathname!==target.pathname&&!(profile.adapterId==='tonybilly'&&current.pathname===expectedPath+'/create'))return result;
+      if(['zeroworld','doom','beatphobia'].includes(profile.adapterId)){
+        const routes=current.searchParams.getAll('go');
+        if(routes.length!==1)return result;
+        const allowed=profile.adapterId==='beatphobia'?['rev.main','rev.make']:['rev.make','rev.make.input'];
+        if(!allowed.includes(routes[0]))return {...result,page:'different'};
+      }
+      result.page='matching';
+      const branch=value('select[name="s_zizum"]')||current.searchParams.get('s_zizum')||current.searchParams.get('zizum_num')||current.searchParams.get('branch');
+      if(branch&&profile.branchId&&String(branch)!==String(profile.branchId))return {...result,page:'different'};
+      const theme=value('input[name="theme_num"]')||current.searchParams.get('theme_num')||current.searchParams.get('theme');
+      if(theme&&profile.themeId)result.theme=String(theme)===String(profile.themeId)?'matching':'different';
+      const date=value('input[name="rev_days"],input[name="date"][type="text"]')||current.searchParams.get('rev_days')||current.searchParams.get('date');
+      if(date)result.date=date===state.targetDate?'matching':'different';
+      return result;
+    }catch{return result;}
+  }
+  function reservationReadiness(profile,state={},user={},page={}){
     const issues=[];
     const date=String(state.targetDate||'');
     const validDate=/^\d{4}-\d{2}-\d{2}$/.test(date)&&Number.isFinite(Date.parse(date))&&new Date(date).toISOString().slice(0,10)===date;
@@ -3261,11 +3308,25 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     if(profile&&!profile.timePriorities?.length&&!Object.values(profile.sessionTemplates||{}).some(t=>t?.userPriority?.length))issues.push('회차·시간대 우선순위 미설정');
     if(profile?.adapterId==='manual')issues.push('자동 예약 미지원');
     let openAtMs=deps.openingOverrideMs?.(profile,date)??null;
-    if(profile?.bookingPlan){try{const plan=deps.normalizeBookingPlan(profile.bookingPlan);if(plan.exactTimes.length||plan.selectionMode==='any') {const i=issues.indexOf('회차·시간대 우선순위 미설정');if(i>=0)issues.splice(i,1);}if(plan.selectionMode==='exact'&&!plan.exactTimes.length)issues.push('정확한 회차 시간 미설정');if(plan.selectionMode==='hours'&&!profile.timePriorities?.length&&!plan.rangeStart&&!plan.rangeEnd)issues.push('보조 시간대 미설정');}catch{issues.push('예약 계획 입력 확인 필요');}}
+    if(profile?.bookingPlan){try{const plan=deps.normalizeBookingPlan(profile.bookingPlan);if(plan.exactTimes.length||plan.selectionMode==='any'||(plan.selectionMode==='hours'&&(plan.rangeStart||plan.rangeEnd))) {const i=issues.indexOf('회차·시간대 우선순위 미설정');if(i>=0)issues.splice(i,1);}if(plan.selectionMode==='exact'&&!plan.exactTimes.length)issues.push('정확한 회차 시간 미설정');if(plan.selectionMode==='hours'&&!profile.timePriorities?.length&&!plan.rangeStart&&!plan.rangeEnd)issues.push('보조 시간대 미설정');}catch{issues.push('예약 계획 입력 확인 필요');}}
     if(openAtMs!==null){}
     else if(!profile?.openingRule)issues.push('오픈 규칙 미확인');
     else if(validDate){try{openAtMs=deps.calculateOpeningInstant(date,profile.openingRule).getTime();}catch{issues.push('오픈 규칙 확인 필요');}}
-    return {issues,openAtMs};
+    const checks=[],add=(id,label,status,message)=>checks.push({id,label,status,message});
+    add('theme','예약 테마',profile&&profile.adapterId!=='manual'?'ready':'needs-input',!profile?'테마를 선택해 주세요.':profile.adapterId==='manual'?'공식 예약 페이지에서 직접 진행해 주세요.':'테마 설정됨');
+    add('date','이용 날짜',validDate?'ready':'needs-input',validDate?'날짜 설정됨':'이용 날짜를 확인해 주세요.');
+    const userReady=!issues.includes('예약자 이름 미설정')&&!issues.includes('연락처 확인 필요');
+    add('user','예약자 정보',userReady?'ready':'needs-input',userReady?'이름·연락처 입력됨':'이름·연락처를 확인해 주세요.');
+    const manualPeople=user.participants==null||user.participants==='';const people=Number(user.participants),validPeople=Number.isInteger(people)&&people>=1&&people<=20;
+    if(!manualPeople&&!validPeople)issues.push('참여 인원 확인 필요');
+    add('participants','참여 인원',manualPeople?'pending':validPeople?'ready':'needs-input',manualPeople?'예약 화면에서 직접 선택':validPeople?people+'명 설정 · 진행 시 실제 선택 확인':'참여 인원을 확인해 주세요.');
+    const sessionIssues=issues.filter(i=>/우선순위|정확한 회차|보조 시간대|예약 계획/.test(i));
+    add('sessions','회차 정책',sessionIssues.length?'needs-input':'ready',sessionIssues.length?sessionIssues.join(' · '):'선택 정책 설정됨 · 오픈 시 실제 회차 확인');
+    add('opening','오픈 시각',Number.isFinite(openAtMs)?'ready':'pending',Number.isFinite(openAtMs)?'설정된 규칙으로 계산됨':'오픈 규칙 확인 필요 · 지금 연습은 사용 가능');
+    add('page','현재 페이지',page.page==='matching'?'ready':'pending',page.page==='login'?'네이버 로그인 후 예약 페이지로 돌아와 주세요.':page.page==='different'?'설정한 예약 페이지와 다릅니다 · 준비 시 이동 후 확인':page.page==='matching'?'예약 페이지 주소 확인 · 로그인 상태는 직접 확인':'현재 페이지 미확인 · 예약 페이지에서 확인');
+    const mismatch=page.theme==='different'||page.date==='different';
+    add('current-selection','현재 선택','pending',mismatch?[page.theme==='different'?'현재 테마가 다릅니다':'',page.date==='different'?'현재 날짜가 다릅니다':'','진행 시 다시 선택'].filter(Boolean).join(' · '):'날짜·테마·인원은 진행 시 실제 선택 확인');
+    return {issues,openAtMs,checks};
   }
   function formatOpeningCountdown(openAtMs,now=Date.now()){
     if(!Number.isFinite(openAtMs))return '오픈 규칙·목표 날짜를 설정해 주세요';
@@ -3276,7 +3337,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   }
   function updatePreparationStatus(rootNode,readiness,now=Date.now()){
     const summary=rootNode.querySelector('[data-preparation-summary]');
-    if(summary)summary.textContent=readiness.issues.length?readiness.issues.join(' · '):'기본 준비 완료';
+    const checks=Array.isArray(readiness.checks)?readiness.checks:[];
+    const missing=checks.filter(c=>c.status==='needs-input').length,pending=checks.filter(c=>c.status==='pending').length;
+    if(summary)summary.textContent=checks.length?(missing?'설정 확인 '+missing+'개':'설정 점검 완료')+(pending?' · 진행 시 확인 '+pending+'개':''):(readiness.issues.length?readiness.issues.join(' · '):'기본 준비 완료');
+    const list=rootNode.querySelector('[data-preparation-checks]');
+    if(list){list.replaceChildren();for(const check of checks){const row=list.ownerDocument.createElement('li'),label=list.ownerDocument.createElement('strong'),message=list.ownerDocument.createElement('span');row.dataset.preparationCheck=check.id;row.dataset.state=check.status;label.textContent=check.label;message.textContent=(check.status==='needs-input'?'설정 필요 · ':check.status==='pending'?'확인 필요 · ':'')+check.message;row.append(label,message);list.append(row);}}
     for(const countdown of rootNode.querySelectorAll('[data-opening-countdown]')){countdown.dataset.openAt=Number.isFinite(readiness.openAtMs)?String(readiness.openAtMs):'';countdown.textContent=formatOpeningCountdown(readiness.openAtMs,now);}
   }
 
@@ -3401,6 +3466,11 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       .th-warning{font-size:12px;line-height:1.55;padding:11px;background:#fff8e8;color:#705316}
       .th-open-display{display:grid;gap:5px;padding:13px;background:#f0ecff;border:1px solid #ded5fa;border-radius:12px}
       .th-open-display span{font-size:12px;color:#665795}.th-open-display strong{font-size:16px;line-height:1.5;color:#4a3695;overflow-wrap:anywhere}
+      .th-preparation-checks{list-style:none;margin:0;padding:8px 0;font-size:11px;line-height:1.6}
+      .th-preparation-checks li{display:grid;grid-template-columns:74px minmax(0,1fr);gap:8px;padding:6px 0;border-bottom:1px solid #edf0f1;overflow-wrap:anywhere}
+      .th-preparation-checks li:last-child{border:0}
+      .th-preparation-checks li[data-state="needs-input"] span{color:#8a4b19}
+      .th-preparation-checks li[data-state="pending"] span{color:#596872}
       .th-readiness strong{color:#303b53}.th-readiness [data-opening-countdown]{margin-top:5px;color:#5540aa;font-weight:800}
       .th-mode-badge{margin-left:auto;font-size:11px;line-height:1.4;border:1px solid #e3ddf5;border-radius:999px;padding:4px 8px;background:#f8f5ff;color:#5a489b}
       .th-run-state{display:flex;align-items:center;gap:7px;font-size:12px;line-height:1.5;color:#4b5670;background:#f6f8fb;padding:9px 11px;border-radius:10px}
@@ -3585,7 +3655,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       el.addEventListener('change',()=>onChange?.(readConfig(rootNode),field,fieldNeedsRerender(field)));
       if(field==='local-name'||field==='local-phone') el.addEventListener('input',()=>onLocalUserInput?.(readConfig(rootNode)));
     }
-    const readiness=reservationReadiness(profiles.find(p=>p.id===state.profileId),state,localUser);
+    const readiness=reservationReadiness(profiles.find(p=>p.id===state.profileId),state,localUser,viewState.preparationPage);
     if(viewState.waiting&&Number.isFinite(viewState.waitingOpenAtMs))readiness.openAtMs=viewState.waitingOpenAtMs;
     updatePreparationStatus(rootNode,readiness);
     restorePanelUiState(rootNode,previousUi);
@@ -3603,7 +3673,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     syncRepo:rootNode.querySelector('[data-field="sync-repo"]')?.value||'',syncToken:rootNode.querySelector('[data-field="sync-token"]')?.value||'',syncAuto:!!rootNode.querySelector('[data-field="sync-auto"]')?.checked
   };}
 
-  return {buildOverlayState,catalogFromProfiles,resolveSelection,createMobileConfigMarkup,applyMobilePriorityConfig,applyMobileProfileConfig,safeImageUrl,reservationReadiness,formatOpeningCountdown,updatePreparationStatus,fieldNeedsRerender,createPanelRenderScheduler,capturePanelUiState,restorePanelUiState,mountUserscriptPanel,readConfig};
+  return {buildOverlayState,catalogFromProfiles,resolveSelection,createMobileConfigMarkup,applyMobilePriorityConfig,applyMobileProfileConfig,safeImageUrl,inspectPreparationPage,reservationReadiness,formatOpeningCountdown,updatePreparationStatus,fieldNeedsRerender,createPanelRenderScheduler,capturePanelUiState,restorePanelUiState,mountUserscriptPanel,readConfig};
 });
 
 
@@ -3798,6 +3868,9 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
   function runStatusText(result){
     const stage=result?.diagnostic?.stage||result?.stage;
     const reason=result?.diagnostic?.confirmationReason;
+    const detail=String(result?.diagnostic?.message||result?.message||'');
+    if(stage==='date-missing'&&/^requested date changed\b/.test(detail))return '현재 날짜 변경 감지 · 목표 날짜를 다시 선택한 뒤 준비해 주세요.';
+    if(stage==='session-unavailable'&&detail==='selected session changed before NEXT')return '선택 회차 변경 감지 · 현재 선택과 회차 우선순위를 확인해 주세요.';
     const confirmationText={
       'naver-confirm-not-found':'예약·결제 버튼을 찾지 못했습니다 · 페이지 로딩 후 다시 준비해 주세요.',
       'naver-confirm-ambiguous':'최종 예약·결제 버튼이 여러 개입니다 · 네이버 화면을 직접 확인해 주세요.',
@@ -3953,7 +4026,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.64'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.65'))>0?String(settings.updateRemoteVersion):''};
     if(deps.isSubmissionCheckpoint(checkpoint))state.statusText=runStatusText({stage:checkpoint.stage});
     let runGeneration=0,activeRun=null,pendingPreparation=null,targetScanEpoch=0,targetScanActive=false;
     let watchController=null,watchContext=settings.availabilityWatch||null,watchEpoch=0;
@@ -4059,13 +4132,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       viewState.executionBusy=pendingPreparation!==null||activeRun!==null;
       viewState.submissionLocked=deps.isSubmissionCheckpoint(checkpoint);
       viewState.preparationPeople=localUser.participants||'';
+      viewState.preparationPage=deps.inspectPreparationPage(p,state,doc,hostRoot);
       viewState.attentionText=attentionText;
       viewState.watchStatus=state.watchStatus||'취소표 확인 대기';
       const plan=p?.bookingPlan||{};const exactLabels=Array.isArray(plan.exactTimes)?plan.exactTimes.join(' → '):String(plan.exactTimes||'');
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
       viewState.dockStatus=watchContext?viewState.watchStatus:viewState.statusText;
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.64');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.65');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -4243,7 +4317,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.64');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.65');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
@@ -4435,8 +4509,8 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     render=deps.createPanelRenderScheduler(host.shadowRoot||host.attachShadow({mode:'open'}),()=>{
       const {profile,schedule,viewState}=viewData();
       deps.mountUserscriptPanel(host,{profiles,state,viewState,localUser,syncConfig:syncUiConfig(),
-        onChange:async (cfg,field,needsRerender)=>{try{await disarmForEdit(field);if(['plan-open-date','plan-open-time'].includes(field)&&cfg.bookingPlan?.oneOffOpenAt&&/(?:T$|^T)/.test(cfg.bookingPlan.oneOffOpenAt))return;const saving=persistConfig(cfg,field);if(needsRerender)render();await saving;if(needsRerender||['target-date','plan-selection-mode'].includes(field))render();else deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));}catch(error){hostRoot.alert?.(String(error.message||error));}},
-        onLocalUserInput:cfg=>{disarmForEdit('local-name').catch(()=>{});localUser={name:cfg.localName||'',phone:cfg.localPhone||'',participants:cfg.localParticipants||''};deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser));if(localUserSaveTimer!==null)hostRoot.clearTimeout?.(localUserSaveTimer);localUserSaveTimer=hostRoot.setTimeout?.(()=>{storage.setLocalUser(localUser).catch?.(()=>{});localUserSaveTimer=null;},400);},
+        onChange:async (cfg,field,needsRerender)=>{try{await disarmForEdit(field);if(['plan-open-date','plan-open-time'].includes(field)&&cfg.bookingPlan?.oneOffOpenAt&&/(?:T$|^T)/.test(cfg.bookingPlan.oneOffOpenAt))return;const saving=persistConfig(cfg,field);if(needsRerender)render();await saving;if(needsRerender||['target-date','plan-selection-mode'].includes(field))render();else deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser,deps.inspectPreparationPage(selectedProfile(),state,doc,hostRoot)));}catch(error){hostRoot.alert?.(String(error.message||error));}},
+        onLocalUserInput:cfg=>{disarmForEdit('local-name').catch(()=>{});localUser={name:cfg.localName||'',phone:cfg.localPhone||'',participants:cfg.localParticipants||''};deps.updatePreparationStatus(host.shadowRoot,deps.reservationReadiness(selectedProfile(),state,localUser,deps.inspectPreparationPage(selectedProfile(),state,doc,hostRoot)));if(localUserSaveTimer!==null)hostRoot.clearTimeout?.(localUserSaveTimer);localUserSaveTimer=hostRoot.setTimeout?.(()=>{storage.setLocalUser(localUser).catch?.(()=>{});localUserSaveTimer=null;},400);},
         onToggleCompact:async()=>{state.compactView=state.compactView===false;await storage.setSettings(state);await markSyncDirty();render();},
         onSyncConfig:async cfg=>saveSyncConfigFromUi(cfg),
         onSyncTest:async cfg=>{await saveSyncConfigFromUi(cfg);return performGitHubSync('test');},
