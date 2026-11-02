@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.18
+// @version      0.1.19
 // @description  티켓링크·NOL 경기 진입 보조. 안내 비교 진단은 티켓링크만 지원.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
@@ -81,7 +81,7 @@ return {KEY,MANUAL_KEY,read,start,append,findConfirmation,observeError,format,fo
 'use strict';
 const Trial=typeof module==='object'&&module.exports?require('./notice-trial'):globalThis.BaseballNoticeTrial;
 const KEY='ticket-helper:baseball-entry:v1', NOL_KEY='ticket-helper:baseball-nol-entry:v1',GATE_KEY='ticket-helper:baseball-nol-gate:v1';
-const VERSION='0.1.18';
+const VERSION='0.1.19';
 const compact=s=>String(s||'').replace(/\s+/g,'').toUpperCase();
 function validateConfig(c){
  if(!c||!/^\d{4}-\d{2}-\d{2}$/.test(c.date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(c.time))throw Error('경기 날짜와 시간을 확인하세요.');
@@ -278,6 +278,7 @@ function mount(doc,win,options={}){
   return record;
  }
  function tick(){
+ if(gate&&!panel.isConnected&&supportedPage()){doc.body.append(panel);applyGateStyles(panel);}
  watchNotice();
  if(pendingTrial){
   try{
