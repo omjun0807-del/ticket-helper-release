@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper - Ticketlink 경기 진입 시험판
 // @namespace    ticket-helper-baseball
-// @version      0.1.17
+// @version      0.1.18
 // @description  티켓링크·NOL 경기 진입 보조. 안내 비교 진단은 티켓링크만 지원.
 // @match        https://www.ticketlink.co.kr/sports/*
 // @match        https://ticketlink.co.kr/sports/*
@@ -81,7 +81,7 @@ return {KEY,MANUAL_KEY,read,start,append,findConfirmation,observeError,format,fo
 'use strict';
 const Trial=typeof module==='object'&&module.exports?require('./notice-trial'):globalThis.BaseballNoticeTrial;
 const KEY='ticket-helper:baseball-entry:v1', NOL_KEY='ticket-helper:baseball-nol-entry:v1',GATE_KEY='ticket-helper:baseball-nol-gate:v1';
-const VERSION='0.1.17';
+const VERSION='0.1.18';
 const compact=s=>String(s||'').replace(/\s+/g,'').toUpperCase();
 function validateConfig(c){
  if(!c||!/^\d{4}-\d{2}-\d{2}$/.test(c.date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(c.time))throw Error('경기 날짜와 시간을 확인하세요.');
@@ -97,14 +97,14 @@ function matchGame(text,c){
 }
 function selector(el,doc){const parts=[];while(el&&el!==doc.body){const parent=el.parentElement;if(!parent)throw Error('경기 행을 지정하지 못했습니다.');parts.unshift(`${el.tagName.toLowerCase()}:nth-child(${Array.from(parent.children).indexOf(el)+1})`);el=parent;}return 'body > '+parts.join(' > ');}
 const textOf=el=>el.innerText===undefined?el.textContent:el.innerText;
-const gateTitle=s=>/^2026와일드카드결정전[12]차전-LGVS두산$/.test(compact(s));
-function validateGateConfig(c){if(!c||!/^\d{1,12}$/.test(c.product)||typeof c.title!=='string'||c.title.length>150||!gateTitle(c.title))throw Error('현재 WC 상품을 먼저 지정하세요.');return {product:c.product,title:c.title};}
+const gateTitle=s=>/^(?:2026와일드카드결정전[12]차전-LGVS두산|2026한국시리즈(?:[1267]차전KTVS삼성|[345]차전삼성VSKT))$/.test(compact(s));
+function validateGateConfig(c){if(!c||!/^\d{1,12}$/.test(c.product)||typeof c.title!=='string'||c.title.length>150||!gateTitle(c.title))throw Error('지원하는 야구 상품을 먼저 지정하세요.');return {product:c.product,title:c.title};}
 function gateTitles(doc,visible,panel){return Array.from(doc.querySelectorAll('p,span,h1,h2,h3,div')).filter(el=>!panel.contains(el)&&visible(el)&&gateTitle(textOf(el))&&!Array.from(el.children).some(child=>visible(child)&&gateTitle(textOf(child))));}
 function gateControls(row,visible){return Array.from(row.querySelectorAll('button,a,[role=button]')).filter(el=>visible(el)&&/^(예매하기|남은시간\d{1,2}:[0-5]\d(?::[0-5]\d)?)$/.test(compact(textOf(el))));}
-function readyGate(doc,visible,panel){return Array.from(doc.querySelectorAll('h1,h2,h3,p,span,div')).some(el=>!panel.contains(el)&&visible(el)&&compact(textOf(el))==='예매준비가완료됐어요');}
+function readyGate(doc,visible,panel){return Array.from(doc.querySelectorAll('h1,h2,h3,p,span,div')).some(el=>!panel.contains(el)&&visible(el)&&['예매준비가완료됐어요','예매는오픈시간부터가능해요'].includes(compact(textOf(el))));}
 function captureGateTarget(doc,win,visible,panel){
  const titles=gateTitles(doc,visible,panel),product=win.location.pathname.match(/^\/gates\/ticket\/(\d+)\/?$/)?.[1];
- if(!product||titles.length!==1||!readyGate(doc,visible,panel))throw Error('예매 준비가 완료된 단일 WC 상품 화면에서 지정하세요.');
+ if(!product||titles.length!==1||!readyGate(doc,visible,panel))throw Error('지원하는 야구 상품의 단일 오픈 준비 화면에서 지정하세요.');
  const controls=gateControls(doc.body,visible).filter(el=>!panel.contains(el));if(controls.length!==1)throw Error('대기 또는 예매 버튼을 하나로 확인하지 못했습니다.');
  for(let row=titles[0].parentElement;row&&row!==doc.body;row=row.parentElement)if(row.contains(controls[0]))return {rowSelector:selector(row,doc),label:textOf(titles[0]).trim().replace(/\s+/g,' '),product};
  throw Error('상품과 버튼의 화면 영역을 확인하지 못했습니다.');
@@ -113,7 +113,7 @@ function matchGateRow(doc,win,row,c,visible,panel){try{validateGateConfig(c);}ca
 function findGateTarget(doc,win,target,c,visible,panel){
  let row;try{row=doc.querySelector(target?.rowSelector);}catch{return null;}
  if(!matchGateRow(doc,win,row,c,visible,panel)||target.product!==c.product)return null;
- const controls=gateControls(row,visible);if(controls.length!==1)return null;const el=controls[0];
+ const controls=gateControls(row,visible),all=gateControls(doc.body,visible).filter(el=>!panel.contains(el));if(controls.length!==1||all.length!==1||controls[0]!==all[0])return null;const el=controls[0];
  return compact(textOf(el))==='예매하기'&&!el.disabled&&!el.matches(':disabled')&&el.getAttribute('aria-disabled')!=='true'&&!el.classList.contains('disabled')?el:null;
 }
 function gateCountdown(doc,win,target,c,visible,panel){
@@ -221,19 +221,19 @@ function mount(doc,win,options={}){
 `;
  doc.body.append(panel);const q=s=>panel.querySelector(s),say=t=>q('[data-status]').textContent=t,report=t=>{const el=q('[data-diagnostic-result]');if(el)el.textContent=t;};let state=null,target=null,marking=false,navigating=false,pendingTrial=null,activeTrialId=null,activeTrialMode='auto',pendingNotice=null,hintedNotice=null;
  if(nol){
-  q('.th-head-copy span').textContent='NOL · 경기 진입 준비판 '+version+' · WC 실제 화면 미검증';
+  q('.th-head-copy span').textContent='NOL · 경기 진입 준비판 '+version+' · 실제 자동 진입 미검증';
   q('[data-diagnostics]').remove();
   const details=q('.th-foot').querySelectorAll('details');
-  details[0].querySelector('small').textContent='새로고침 없이 대기 → 오픈 시각 이후 지정한 경기의 예매 버튼이 활성화되면 자동 클릭 1회. 대기 화면과 열린 예매창은 직접 확인하세요. 안내 확인·보안문자·좌석 선택은 직접 진행합니다. WC 경기 페이지가 공개되면 실제 날짜·시간·두 팀을 다시 확인하고 지정하세요. PC 현지 시계 기준이며 이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.';
+  details[0].querySelector('small').textContent='새로고침 없이 대기 → 오픈 시각 이후 지정한 경기의 예매 버튼이 활성화되면 자동 클릭 1회. 대기 화면과 열린 예매창은 직접 확인하세요. 안내 확인·보안문자·좌석 선택은 직접 진행합니다. 현재 경기의 날짜·시간·두 팀을 확인하고 지정하세요. PC 현지 시계 기준이며 이 탭을 앞에 유지하세요. 오픈 정각 실기 검증 전입니다.';
   details[1].querySelector('a').href='https://time.navyism.com/?host=nol.yanolja.com';details[1].querySelector('a').textContent='NOL 네이비즘 열기 ↗';
  }
  if(gate){
-  q('.th-head-copy span').textContent='NOL · WC 오픈 대기 '+version+' · 실제 자동 진입 미검증';
-  q('.th-section-title').textContent='현재 WC 상품';
+  q('.th-head-copy span').textContent='NOL · 야구 오픈 대기 '+version+' · 실제 자동 진입 미검증';
+  q('.th-section-title').textContent='현재 야구 상품';
   for(const name of ['date','time','home','away'])q(`[name=${name}]`).closest('label').hidden=true;
   for(const [name,label] of [['product','상품 번호'],['title','상품명']]){const item=doc.createElement('label');item.textContent=label;const input=doc.createElement('input');input.name=name;input.readOnly=true;item.append(input);q('.th-open').before(item);}
   q('[data-mark]').textContent='① 현재 상품 지정';q('[data-check]').textContent='상품 일치 확인';
-  q('.th-foot details small').textContent='현재 상품과 오픈 시각을 지정하세요. 화면의 카운트다운으로 오픈을 확인하고 활성화된 예매하기 버튼만 1회 클릭합니다. 입력 시각과 2분 넘게 다르면 중지합니다. 대기열·안내·보안문자는 직접 진행하세요. 화면 오픈 기준 30초 뒤 종료합니다.';q('.th-open small').textContent='WC 대기 화면의 카운트다운 우선 · PC 시각과 차이 확인';q('.th-foot details p').textContent='카운트다운을 지정 후 관찰한 경우 화면의 오픈 시점을 우선합니다. 카운트다운을 확인하지 못한 경우 PC 시각을 사용합니다. 버튼 활성화와 상품 일치도 함께 확인합니다.';
+  q('.th-foot details small').textContent='현재 상품과 오픈 시각을 지정하세요. 화면의 카운트다운으로 오픈을 확인하고 활성화된 예매하기 버튼만 1회 클릭합니다. 입력 시각과 2분 넘게 다르면 중지합니다. 대기열·안내·보안문자는 직접 진행하세요. 화면 오픈 기준 30초 뒤 종료합니다.';q('.th-open small').textContent='상품 대기 화면의 카운트다운 우선 · PC 시각과 차이 확인';q('.th-foot details p').textContent='카운트다운을 지정 후 관찰한 경우 화면의 오픈 시점을 우선합니다. 카운트다운을 확인하지 못한 경우 PC 시각을 사용합니다. 버튼 활성화와 상품 일치도 함께 확인합니다.';
   const record=doc.createElement('details');record.innerHTML='<summary>마지막 예매 버튼 클릭 기록</summary><p data-click-record>아직 클릭 기록이 없습니다.</p>';q('.th-foot').prepend(record);q('.th-foot a').href='https://time.navyism.com/?host=tickets.interpark.com';q('.th-foot a').textContent='인터파크 네이비즘 열기 ↗';say('현재 상품을 지정하고 예매 오픈 시각을 입력하세요.');
  }
  function fold(value){panel.dataset.folded=String(value);q('[data-content]').hidden=value;q('[data-toggle]').textContent=value?'야구 헬퍼 열기':'접기';q('[data-toggle]').setAttribute('aria-expanded',String(!value));if(gate)applyGateStyles(panel);try{win.sessionStorage.setItem(foldKey,String(value));}catch{}}
@@ -291,7 +291,7 @@ function mount(doc,win,options={}){
    confirmation.click();report(Trial.formatComparison(win));say('안내 자동 확인 진단 1회를 실행했습니다. 열린 창과 진단 기록을 확인하세요.');return;
   }catch{pendingTrial=null;endNotice();say('진단 기록 저장에 실패하여 확인 진단을 중지했습니다.');return;}
  }
- if(!state||navigating)return;try{const status=access();if(state.phase==='reloaded'&&status==='unknown'&&currentUrl()===state.url&&now()>=state.openAt&&now()<=state.openAt+30000){say('경기 목록이 표시되기를 기다립니다. 추가 새로고침은 하지 않습니다.');return;}const button=gate?findGateTarget(doc,win,target,state.config,visible,panel):findTarget(doc,target,state.config,visible,nol),action=decide(gate&&Number.isFinite(state.siteOpenAt)?{...state,openAt:state.siteOpenAt}:state,{now:now(),url:currentUrl(),access:status,targetReady:!!button,reloadAtOpen:!nol});
+ if(!state||navigating)return;try{if(gate&&!matchesRow(doc.querySelector(target.rowSelector),state.config)){stop('상품 번호·상품명·차전·팀이 바뀌었거나 확인되지 않아 중지했습니다.');return;}const status=access();if(state.phase==='reloaded'&&status==='unknown'&&currentUrl()===state.url&&now()>=state.openAt&&now()<=state.openAt+30000){say('경기 목록이 표시되기를 기다립니다. 추가 새로고침은 하지 않습니다.');return;}const button=gate?findGateTarget(doc,win,target,state.config,visible,panel):findTarget(doc,target,state.config,visible,nol),action=decide(gate&&Number.isFinite(state.siteOpenAt)?{...state,openAt:state.siteOpenAt}:state,{now:now(),url:currentUrl(),access:status,targetReady:!!button,reloadAtOpen:!nol});
  if(action==='stop'){stop(status==='queue'?'대기열 감지: 창을 유지하고 기다려 주세요.':status==='blocked'?'보안 경고: 동작을 중지했습니다.':status==='captcha'?'로그인·인증은 직접 진행하세요.':'화면·기한·경기 확인 실패로 중지했습니다.');return;}
  if(action==='wait'&&gate&&Number.isFinite(state.siteOpenAt)){say(now()<state.siteOpenAt?`화면 오픈까지 약 ${Math.max(0,Math.ceil((state.siteOpenAt-now())/1000))}초 · PC 기준과 ${Math.round((state.openAt-state.siteOpenAt)/1000)}초 차이`:'화면 오픈 확인 · 예매 버튼 활성화 대기 중');return;}if(action==='wait'){say(now()<state.openAt?`오픈까지 ${Math.max(0,Math.ceil((state.openAt-now())/1000))}초 · 이 탭을 앞에 두세요.`:(nol?'새로고침 없이 목표 예매 버튼 활성화 대기 중':'새로고침 완료 · 목표 예매 버튼 활성화 대기 중'));return;}
  if(action==='reload'){state.phase='reloaded';persist();navigating=true;say('목록을 한 번 새로고침합니다.');reload();return;}
@@ -347,6 +347,7 @@ function mount(doc,win,options={}){
 }
 return {KEY,NOL_KEY,GATE_KEY,validateConfig,matchGame,captureTarget,findTarget,decide,mount};
 });
+
 
 BaseballEntry.mount(document,window,{provider:['nol.yanolja.com','tickets.interpark.com'].includes(window.location.hostname)?'nol':'ticketlink'});
 })();
