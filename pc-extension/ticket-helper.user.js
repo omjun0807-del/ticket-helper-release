@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ticket Helper
 // @namespace    ticket-helper.private
-// @version      0.1.68
+// @version      0.1.69
 // @description  Personal escape-room booking helper
 // @match        https://keyescape.com/*
 // @match        https://www.keyescape.com/*
@@ -37,7 +37,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-globalThis.TICKET_HELPER_VERSION="0.1.68";
+globalThis.TICKET_HELPER_VERSION="0.1.69";
 globalThis.TICKET_HELPER_DESKTOP_RUNTIME=(()=>{
   if(globalThis.TICKET_HELPER_EXTENSION)return true;
   try{
@@ -1865,7 +1865,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const value=normalized(textOf(option));
         return !!target&&!!value&&!!option?.value&&!option.disabled&&(value===target||(target.length>=4&&(value.includes(target)||target.includes(value))));
       },
-      async selectThemeByName(themeName, branchName, branchId) {
+      async selectThemeByName(themeName, branchName, branchId, {restoreBlank=false}={}) {
         checkCancelled();
         const target=normalized(themeName); if(!target)return false;
         const optionMatches=(optionTarget,candidate)=>{
@@ -1874,7 +1874,17 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           if(value===optionTarget)return true;
           return optionTarget.length>=4&&(value.includes(optionTarget)||optionTarget.includes(value));
         };
+        const restoreBranch=()=>doc.querySelector('select#zizum,select[name="zizum"],select[name="zizum_num"]');
+        const restoreTheme=()=>doc.querySelector('select#theme,select[name="theme"]');
+        const restoreBranchMatches=()=>String(restoreBranch()?.value||'')===String(branchId||'');
         const findThemeOption=()=>{
+          if(restoreBlank){
+            const sel=restoreTheme();
+            if(!sel||!restoreBranchMatches())return null;
+            const options=[...(sel.options||[])];
+            const exact=options.filter(o=>o.value&&!o.disabled&&normalized(textOf(o))===target);
+            return exact.length===1?{sel,option:exact[0]}:null;
+          }
           let partial=null;
           for(const sel of [...doc.querySelectorAll('select')]){
             const options=[...(sel.options||[])];
@@ -1891,7 +1901,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           if(!found)return false;
           const options=[...(found.sel.options||[])];
           const current=found.sel.selectedOptions?.[0]||options[found.sel.selectedIndex];
-          return !!current&&optionMatches(target,textOf(current));
+          return !!current&&(restoreBlank ? current===found.option&&!!monthInfo() : optionMatches(target,textOf(current)));
         };
         const triggerJqueryChange=(sel,value)=>{
           checkCancelled();
@@ -1919,7 +1929,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           const branchTarget=normalized(branchName);
           const branchValue=String(branchId||'');
           const selects=[...doc.querySelectorAll('select')];
-          const branchSelect=selects.find(sel=>{
+          const branchSelect=restoreBlank?(restoreBranchMatches()&&!restoreTheme()?.value?restoreBranch():null):selects.find(sel=>{
             const options=[...(sel.options||[])];
             return options.some(o=>
               (branchTarget&&normalized(textOf(o))===branchTarget) ||
@@ -1928,14 +1938,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
           });
           if(branchSelect){
             const options=[...(branchSelect.options||[])];
-            const option=options.find(o=>
+            const option=options.find(o=>restoreBlank ? !o.disabled&&String(o.value||'')===branchValue :
               (branchTarget&&normalized(textOf(o))===branchTarget) ||
               (branchValue&&String(o.value||'')===branchValue)
             );
             if(option){
               setValue(branchSelect,option.value);
               found=await waitForThemeOption(1600);
-              if(!found&&triggerJqueryChange(branchSelect,option.value)){
+              if(!found&&(!restoreBlank||(restoreBranchMatches()&&restoreBranch()===branchSelect&&!restoreTheme()?.value))&&triggerJqueryChange(branchSelect,option.value)){
                 found=await waitForThemeOption(3400);
               }
             }
@@ -1944,6 +1954,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         if(!found)return false;
         if(selectedThemeMatches())return true;
 
+        if(restoreBlank&&(!restoreBranchMatches()||found.sel.value))return false;
         setValue(found.sel,found.option.value);
         for(let i=0;i<25;i++){
           await sleep(40);checkCancelled();
@@ -1951,7 +1962,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         }
 
         const refreshed=findThemeOption();
-        if(refreshed&&triggerJqueryChange(refreshed.sel,refreshed.option.value)){
+        if(refreshed&&(!restoreBlank||refreshed.sel.value===refreshed.option.value)&&triggerJqueryChange(refreshed.sel,refreshed.option.value)){
           for(let i=0;i<50;i++){
             await sleep(40);checkCancelled();
             if(selectedThemeMatches())return true;
@@ -4043,6 +4054,21 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }catch(error){if(isCancelled()||error?.stage==='cancelled')return stopped();throw error;}
   }
 
+  async function restoreKeyescapeBlankTheme(profile,doc,win,isCancelled=()=>false){
+    if(profile?.adapterId!=='keyescape'||!profile.branchId||!profile.themeName||isCancelled())return false;
+    try{
+      const url=new URL(win.location.href);
+      if(url.protocol!=='https:'||!/^(?:www\.)?keyescape\.com$/.test(url.hostname)||url.pathname!=='/reservation1.php')return false;
+      const branchIds=url.searchParams.getAll('zizum_num');
+      if(branchIds.length!==1||branchIds[0]!==String(profile.branchId)||url.searchParams.has('theme_num')||url.searchParams.has('theme_info_num'))return false;
+      const branch=doc.querySelector('select#zizum,select[name="zizum"],select[name="zizum_num"]');
+      const theme=doc.querySelector('select#theme,select[name="theme"]');
+      if(!theme||theme.value||String(branch?.value||'')!==String(profile.branchId))return false;
+      const page=deps.createBrowserKeyescapePage(doc,win,{isCancelled});
+      return await page.selectThemeByName(profile.themeName,profile.branchName,profile.branchId,{restoreBlank:true});
+    }catch(error){if(error?.stage==='cancelled')return false;throw error;}
+  }
+
   async function bootTicketHelper(){
     if(!claimBoot(hostRoot,'v0.1')) return false;
     const doc=hostRoot.document;
@@ -4069,7 +4095,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     const currentId=settings.profileId||checkpoint?.profileId||'';
     const bootContext=detectCurrentPageContext(hostRoot.location.href,doc,profiles);
     const initialProfile=selectProfileForPageContext(profiles,bootContext,currentId);
-    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.68'))>0?String(settings.updateRemoteVersion):''};
+    const state={profileId:initialProfile?.id||'',siteId:settings.siteId||initialProfile?.siteId||'',branchId:String(settings.branchId||initialProfile?.branchId||''),targetDate:settings.targetDate||checkpoint?.targetDate||'',mode:settings.mode||checkpoint?.mode||'practice',fallbackEnabled:false,captchaAutoResume:settings.captchaAutoResume!==false,maxPaymentAmount:'',compactView:true,lastUpdateCheckAt:Number(settings.lastUpdateCheckAt||0),updateRemoteVersion:compareVersions(String(settings.updateRemoteVersion||'0'),String(hostRoot.TICKET_HELPER_VERSION||'0.1.69'))>0?String(settings.updateRemoteVersion):''};
     if(deps.isSubmissionCheckpoint(checkpoint)||checkpoint?.stage==='recovery-paused')state.statusText=runStatusText({stage:checkpoint.stage});
     else if(recoveryPending)state.statusText=runStatusText({stage:'recovery-paused'});
     let runGeneration=0,activeRun=null,pendingPreparation=null,targetScanEpoch=0,targetScanActive=false,configurationReplacement=false;
@@ -4186,7 +4212,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
       viewState.planSummary=[exactLabels?'희망 회차 '+exactLabels:'회차 시간 직접 입력 가능',plan.rangeStart||plan.rangeEnd?'허용 범위 '+(plan.rangeStart||'00:00')+'~'+(plan.rangeEnd||'23:59'):'',openingText?'오픈 '+openingText:'오픈 시각 설정 필요'].filter(Boolean).join(' · ');
       if(checkpoint?.stage==='armed')viewState.statusText=checkpoint.openTrigger?.openAtMs>Date.now()?'오픈 전 대기 중 · 설정 저장 완료':'오픈 시각 도달 · 실제 회차 확인 중';
       viewState.dockStatus=watchContext?viewState.watchStatus:viewState.statusText;
-      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.68');
+      viewState.installedVersion=String(hostRoot.TICKET_HELPER_VERSION||'0.1.69');
       viewState.extensionVersion=String(hostRoot.TICKET_HELPER_EXTENSION?.version||'');
       viewState.desktopUserscript=!viewState.extensionVersion&&!!hostRoot.TICKET_HELPER_DESKTOP_RUNTIME;
       viewState.updateRemoteVersion=state.updateRemoteVersion||"";
@@ -4400,7 +4426,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
         const status=Number(response?.status||0);
         if(status&&status>=400)throw new Error(`HTTP ${status}`);
         const remote=parseUserscriptMetaVersion(response?.responseText||response?.response||'');
-        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.68');
+        const current=String(hostRoot.TICKET_HELPER_VERSION||'0.1.69');
         if(!remote)throw new Error('원격 버전 정보를 읽지 못했습니다.');
         if(!updateIsSafe())return {status:'deferred'};
         state.lastUpdateCheckAt=now;state.updateRemoteVersion=compareVersions(remote,current)>0?remote:'';await storage.setSettings(state);
@@ -4679,6 +4705,14 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     doc.addEventListener?.('visibilitychange',()=>{if(doc.visibilityState==='visible'&&updateIsSafe())checkUpdate(false);});
     if(syncConfig.autoSync&&syncConfig.token&&!checkpoint&&!recoveryPending) scheduleAutoSync(2200);
 
+    if(!checkpoint&&!recoveryPending&&!settings.pendingTargetScan&&!watchContext&&settings.profileId===initialProfile?.id){
+      const generation=runGeneration;
+      const cancelled=()=>generation!==runGeneration||configurationReplacement||!!checkpoint||!!pendingPreparation||activeRun!==null||targetScanActive||!!watchContext||state.profileId!==initialProfile?.id;
+      restoreKeyescapeBlankTheme(initialProfile,doc,hostRoot,cancelled).then(restored=>{
+        if(restored&&!cancelled())render();
+      }).catch(()=>{});
+    }
+
     if(settings.pendingTargetScan&&state.targetDate){
       const epoch=++targetScanEpoch;targetScanActive=true;const cancelled=()=>epoch!==targetScanEpoch;
       const pendingProfile=profiles.find(p=>p.id===settings.pendingTargetScanProfileId)||initialProfile;
@@ -4765,7 +4799,7 @@ globalThis.TICKET_HELPER_CSS=":root{--th-bg:#f6f7fb;--th-surface:#fff;--th-surfa
     }
     return true;
   }
-  return {runStatusText,claimBoot,deriveFallbackContinuation,handleRunResult,createScheduleObserver,createArmedCheckpoint,createTimingTestCheckpoint,nextArmedAction,scanTargetDateSessions,expectedUserscriptResumePage,renderBootError,detectThemeNameFromPage,detectThemeImageFromPage,detectCurrentPageContext,createProfileFromCurrentPage,selectProfileForPageContext,parseUserscriptMetaVersion,compareVersions,bootTicketHelper};
+  return {restoreKeyescapeBlankTheme,runStatusText,claimBoot,deriveFallbackContinuation,handleRunResult,createScheduleObserver,createArmedCheckpoint,createTimingTestCheckpoint,nextArmedAction,scanTargetDateSessions,expectedUserscriptResumePage,renderBootError,detectThemeNameFromPage,detectThemeImageFromPage,detectCurrentPageContext,createProfileFromCurrentPage,selectProfileForPageContext,parseUserscriptMetaVersion,compareVersions,bootTicketHelper};
 });
 
 
